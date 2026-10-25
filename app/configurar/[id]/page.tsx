@@ -202,7 +202,7 @@ export default function ConfigurarClientePage() {
 
       setPaquetesVinculados(data.paquetes_vinculados || 0);
       setSuccessMessage(
-        `¡Configuración guardada exitosamente! Se vincularon ${data.paquetes_vinculados} paquetes exactos desde la API oficial de TIB.`
+        `¡Configuración guardada exitosamente! Se vincularon ${(data.paquetes_vinculados || 0).toLocaleString()} paquetes al portal de este cliente.`
       );
     } catch (err: any) {
       setErrorMessage(err.message || 'Error al actualizar');
@@ -316,12 +316,12 @@ export default function ConfigurarClientePage() {
                 </h3>
               </div>
               <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#0284c7', color: '#ffffff', padding: '2px 8px', borderRadius: '12px' }}>
-                Coincidencia Exacta Estricta
+                Coincidencia Inteligente y Flexible
               </span>
             </div>
             
             <p style={{ margin: '0 0 14px', fontSize: '12.5px', color: '#0c4a6e', lineHeight: 1.5 }}>
-              Solo se asignarán al portal de este cliente aquellos paquetes cuyo consignatario oficial en la API de TIB sea <strong>100% idéntico</strong> a alguna de las palabras clave de la lista. No se agregan variantes automáticas ni el nombre del formulario.
+              Se asignarán automáticamente a este cliente todos los paquetes cuyo consignatario oficial coincida o contenga alguna de estas palabras clave (ejemplo: <strong>INK</strong> vinculará todos los <em>AMEX INK ...</em>, <strong>KENNETH MALDONADO</strong>, etc.).
             </p>
 
             {/* Lista Visual de Palabras Clave Activas */}

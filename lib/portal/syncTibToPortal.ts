@@ -100,9 +100,10 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
 
   const clientesList = clientes || [];
 
-  // 2. Construir mapas de coincidencia exacta estricta para clientes regulares
+  // 2. Construir mapas de coincidencia exacta y lista para coincidencia por inclusión
   const nclientExactMap = new Map<string, string>();
   const iclientMap = new Map<string, string>();
+  const keywordInclusionList: Array<{ keyword: string; email: string }> = [];
 
   for (const c of clientesList) {
     const targetEmail = c.email.trim().toLowerCase();
@@ -110,26 +111,32 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     if (targetEmail === ADMIN_MASTER_EMAIL) continue;
 
     const cleanNombre = cleanExactString(c.nombre_completo);
-    if (cleanNombre) {
+    if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX') {
       nclientExactMap.set(cleanNombre, targetEmail);
+      keywordInclusionList.push({ keyword: cleanNombre, email: targetEmail });
     }
 
     if (Array.isArray(c.alias_palabras_clave)) {
       for (const alias of c.alias_palabras_clave) {
         const cleanAlias = cleanExactString(alias);
-        if (cleanAlias && cleanAlias.length >= 3) {
+        if (cleanAlias && cleanAlias.length >= 2 && cleanAlias !== 'AMEX') {
           nclientExactMap.set(cleanAlias, targetEmail);
+          keywordInclusionList.push({ keyword: cleanAlias, email: targetEmail });
         }
       }
     }
 
     if (c.casillero_codigo) {
       const cleanCasillero = cleanExactString(c.casillero_codigo);
-      if (cleanCasillero) {
+      if (cleanCasillero && cleanCasillero !== 'AMEX') {
         iclientMap.set(cleanCasillero, targetEmail);
+        keywordInclusionList.push({ keyword: cleanCasillero, email: targetEmail });
       }
     }
   }
+
+  // Ordenar lista de inclusión por longitud descendente para que frases más específicas tengan prioridad
+  keywordInclusionList.sort((a, b) => b.keyword.length - a.keyword.length);
 
   // 3. Descargar en paralelo los estados de la API oficial de TIB
   const [recibidos, enviados, entregados] = await Promise.all([
@@ -148,13 +155,20 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     const cleanConsignee = cleanExactString(item.nclient);
     const cleanIclient = cleanExactString(item.iclient);
 
-    // Regla 1: Coincidencia con cliente regular
+    // Regla 1: Coincidencia con cliente regular (exacta primero, luego por inclusión)
     let matchedEmail: string | undefined = undefined;
 
     if (cleanConsignee && nclientExactMap.has(cleanConsignee)) {
       matchedEmail = nclientExactMap.get(cleanConsignee);
     } else if (cleanIclient && iclientMap.has(cleanIclient)) {
       matchedEmail = iclientMap.get(cleanIclient);
+    } else if (cleanConsignee) {
+      for (const kwItem of keywordInclusionList) {
+        if (cleanConsignee.includes(kwItem.keyword)) {
+          matchedEmail = kwItem.email;
+          break;
+        }
+      }
     }
 
     // Regla 2: Asignación automática al Admin Master para todo lo que contenga "AMEX" o "amex"

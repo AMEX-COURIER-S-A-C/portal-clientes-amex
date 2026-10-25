@@ -127,26 +127,57 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Error al actualizar datos en base de datos.' }, { status: 500 });
     }
 
-    // 3. Re-sincronizar paquetes de la API oficial de TIB para este cliente con sus palabras clave exactas
+    // 3. Re-vincular paquetes inteligente en paquetes_portal
     let totalLinked = 0;
     try {
-      // Limpiar paquetes asignados previamente para este correo antes de recalcular
+      const clientEmail = existingClient.email.toLowerCase();
+
+      // Recopilar palabras clave válidas (mínimo 2 caracteres, ignorar genéricos como 'AMEX')
+      const validKeywords: string[] = [];
+      const candidateList = [cleanNombre, casillero_codigo, ...keywords];
+      
+      for (const item of candidateList) {
+        const clean = cleanExactString(item);
+        if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
+          validKeywords.push(clean);
+        }
+      }
+
+      // Revertir primero los paquetes asignados previamente a este cliente al email del superadmin
       await portalAdmin
         .from('paquetes_portal')
-        .delete()
-        .eq('usuario_email', existingClient.email.toLowerCase());
+        .update({ usuario_email: 'sistemaamexcourier@gmail.com' })
+        .eq('usuario_email', clientEmail);
 
-      const syncRes = await syncTibPackagesToPortal({ specificEmail: existingClient.email });
-      totalLinked = syncRes.count || 0;
-    } catch (syncErr) {
-      console.warn('[ActualizarCliente] Aviso al sincronizar TIB tras edición:', syncErr);
+      // Vincular todos los paquetes que contengan o coincidan con cualquiera de las palabras clave
+      if (validKeywords.length > 0) {
+        for (const kw of validKeywords) {
+          await portalAdmin
+            .from('paquetes_portal')
+            .update({
+              usuario_email: clientEmail,
+              actualizado_en: new Date().toISOString(),
+            })
+            .ilike('nombre_consignatario', `%${kw}%`);
+        }
+      }
+
+      // Contar el total de paquetes ahora vinculados a este cliente
+      const { count: finalCount } = await portalAdmin
+        .from('paquetes_portal')
+        .select('id', { count: 'exact', head: true })
+        .eq('usuario_email', clientEmail);
+
+      totalLinked = finalCount || 0;
+    } catch (relinkErr) {
+      console.error('[ActualizarCliente] Error al revincular paquetes:', relinkErr);
     }
 
     return NextResponse.json({
       success: true,
       client: updatedClient,
       paquetes_vinculados: totalLinked,
-      message: `Cliente actualizado. Se vincularon ${totalLinked} paquetes exactos desde TIB.`,
+      message: `Cliente actualizado. Se vincularon ${totalLinked} paquetes desde el inventario.`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error interno al actualizar usuario cliente';
