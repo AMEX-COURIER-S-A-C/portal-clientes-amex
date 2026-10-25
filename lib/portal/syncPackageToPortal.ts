@@ -73,7 +73,8 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
       }
     }
 
-    return null;
+    // Si no coincide con ningún cliente registrado, se asigna por defecto al Superadmin Master
+    return 'sistemaamexcourier@gmail.com';
   };
 
   const recordsToUpsert = [];

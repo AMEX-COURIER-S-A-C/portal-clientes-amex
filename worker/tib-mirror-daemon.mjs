@@ -498,13 +498,9 @@ async function runMirrorSyncCycle() {
         matchedEmail = iclientMap.get(cleanIclient);
       }
 
-      // Regla 2: Regla AMEX para Master Admin
+      // Regla 2: Cualquier paquete no asignado a un cliente regular se asigna al Superadmin Master
       if (!matchedEmail) {
-        const consigneeUpper = (item.nclient || '').toUpperCase();
-        const descUpper = (item.description || '').toUpperCase();
-        if (consigneeUpper.includes('AMEX') || descUpper.includes('AMEX')) {
-          matchedEmail = ADMIN_MASTER_EMAIL;
-        }
+        matchedEmail = ADMIN_MASTER_EMAIL;
       }
 
       if (!matchedEmail) continue;

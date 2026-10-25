@@ -170,13 +170,9 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       }
     }
 
-    // Regla 2: Asignación automática al Admin Master para todo lo que contenga "AMEX" o "amex"
+    // Regla 2: Asignación automática al Superadmin Master para cualquier paquete no asociado a un cliente regular
     if (!matchedEmail) {
-      const consigneeUpper = (item.nclient || '').toUpperCase();
-      const descUpper = (item.description || '').toUpperCase();
-      if (consigneeUpper.includes('AMEX') || descUpper.includes('AMEX')) {
-        matchedEmail = ADMIN_MASTER_EMAIL;
-      }
+      matchedEmail = ADMIN_MASTER_EMAIL;
     }
 
     // Si se solicitó para un email específico, omitir si no coincide
