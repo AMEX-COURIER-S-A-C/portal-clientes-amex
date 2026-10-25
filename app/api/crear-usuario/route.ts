@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
+import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
 import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
 
@@ -135,13 +135,43 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Auto-cruce de paquetes exclusivamente desde la API oficial de TIB
+    // 4. Auto-cruce de paquetes directamente en el inventario y consulta TIB
     let totalLinked = 0;
     try {
-      const syncRes = await syncTibPackagesToPortal({ specificEmail: cleanEmail });
-      totalLinked = syncRes.count || 0;
-    } catch (tibErr) {
-      console.warn('[CrearCliente] Aviso al sincronizar paquetes desde TIB API:', tibErr);
+      const validKeywords: string[] = [];
+      const candidateList = [cleanNombre, casillero_codigo, ...keywords];
+      for (const item of candidateList) {
+        const clean = cleanExactString(item);
+        if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
+          validKeywords.push(clean);
+        }
+      }
+
+      if (validKeywords.length > 0) {
+        for (const kw of validKeywords) {
+          await portalAdmin
+            .from('paquetes_portal')
+            .update({
+              usuario_email: cleanEmail,
+              actualizado_en: new Date().toISOString(),
+            })
+            .ilike('nombre_consignatario', `%${kw}%`);
+        }
+      }
+
+      try {
+        await syncTibPackagesToPortal({ specificEmail: cleanEmail });
+      } catch (tibErr) {
+        console.warn('[CrearCliente] Aviso al sincronizar paquetes desde TIB API:', tibErr);
+      }
+
+      const { count: finalCount } = await portalAdmin
+        .from('paquetes_portal')
+        .select('id', { count: 'exact', head: true })
+        .eq('usuario_email', cleanEmail);
+      totalLinked = finalCount || 0;
+    } catch (linkErr) {
+      console.warn('[CrearCliente] Aviso al vincular paquetes en base de datos:', linkErr);
     }
 
     return NextResponse.json({
