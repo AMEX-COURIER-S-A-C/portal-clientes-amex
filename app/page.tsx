@@ -1029,19 +1029,6 @@ export default function ClienteDashboardTIB() {
                     <button
                       onClick={() => {
                         setUserMenuOpen(false);
-                        setCreateClientSuccess(null);
-                        setCreateClientError(null);
-                        setIsAddClientOpen(true);
-                      }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                    >
-                      <UserPlus style={{ width: '14px', height: '14px', color: '#ff5722' }} />
-                      <span>+ Agregar Cliente</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setUserMenuOpen(false);
                         handleSyncAllFromTib();
                       }}
                       style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
