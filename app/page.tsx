@@ -27,7 +27,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Settings,
-  Pencil
+  Pencil,
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -891,7 +892,7 @@ export default function ClienteDashboardTIB() {
       </header>
 
       {/* 2. Contenedor de Contenido Principal */}
-      <main className="p-3 sm:p-6" style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <main className="px-4 py-4 sm:px-6 sm:py-6 lg:px-8" style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
         {/* ================= VISTA 1: LISTADO WAREHOUSE (LIMPIO, SIN BOTONES DE CONFIGURACIÓN) ================= */}
         {activeTab === 'warehouse' ? (
@@ -1097,7 +1098,7 @@ export default function ClienteDashboardTIB() {
                 <button
                   type="button"
                   onClick={handleSearchClick}
-                  className="flex-1 sm:flex-initial"
+                  className="w-auto"
                   style={{
                     backgroundColor: '#1e2229',
                     color: '#ffffff',
@@ -1119,7 +1120,7 @@ export default function ClienteDashboardTIB() {
                   BUSCAR
                 </button>
 
-                <div className="flex-1 sm:flex-initial">
+                <div className="w-auto">
                   <ExcelExportDropdown
                     userEmail={user?.email}
                     filters={{
@@ -1165,6 +1166,17 @@ export default function ClienteDashboardTIB() {
             {/* 4. Tabla Principal Estilo TIB (Visualización en Tabla con Scroll Horizontal Táctil en Móvil) */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
               
+              {/* Indicador móvil de deslizamiento horizontal con separación limpia */}
+              <div className="flex md:hidden items-center justify-between px-4 py-2.5 bg-[#f8fafc] border-b border-gray-200 text-xs">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: '#374151' }}>
+                  <ArrowRightLeft style={{ width: '13px', height: '13px', color: '#ff5722' }} />
+                  <span>Desliza para ver más datos</span>
+                </div>
+                <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 500 }}>
+                  ↔ 9 columnas
+                </span>
+              </div>
+
               {/* Tabla completa estilo TIB accesible en todos los dispositivos con scroll horizontal */}
               <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
@@ -1172,15 +1184,15 @@ export default function ClienteDashboardTIB() {
                   {/* Encabezado estilo TIB */}
                   <thead>
                     <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb', color: '#4b5563', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      <th style={{ padding: '14px 16px', minWidth: '130px' }}>WR</th>
-                      <th style={{ padding: '14px 16px', minWidth: '150px' }}># TRACKING</th>
-                      <th style={{ padding: '14px 16px', minWidth: '220px' }}>CLIENTE</th>
-                      <th style={{ padding: '14px 16px', minWidth: '90px' }}>TIPO</th>
-                      <th style={{ padding: '14px 16px', minWidth: '100px' }}>PESO(KG)</th>
-                      <th style={{ padding: '14px 16px', minWidth: '150px' }}>ESTADO</th>
-                      <th style={{ padding: '14px 16px', minWidth: '120px' }}>REGISTRADO</th>
-                      <th style={{ padding: '14px 16px', minWidth: '120px' }}>MODIFICADO</th>
-                      <th style={{ padding: '14px 16px', minWidth: '140px', textAlign: 'center' }}>DOCUMENTOS</th>
+                      <th style={{ padding: '12px 14px', minWidth: '120px' }}>WR</th>
+                      <th style={{ padding: '12px 14px', minWidth: '145px' }}># TRACKING</th>
+                      <th style={{ padding: '12px 14px', minWidth: '190px' }}>CLIENTE</th>
+                      <th style={{ padding: '12px 14px', minWidth: '85px' }}>TIPO</th>
+                      <th style={{ padding: '12px 14px', minWidth: '95px' }}>PESO(KG)</th>
+                      <th style={{ padding: '12px 14px', minWidth: '135px' }}>ESTADO</th>
+                      <th style={{ padding: '12px 14px', minWidth: '110px' }}>REGISTRADO</th>
+                      <th style={{ padding: '12px 14px', minWidth: '110px' }}>MODIFICADO</th>
+                      <th style={{ padding: '12px 14px', minWidth: '130px', textAlign: 'center' }}>DOCUMENTOS</th>
                     </tr>
                   </thead>
 
@@ -1221,49 +1233,49 @@ export default function ClienteDashboardTIB() {
                             }}
                           >
                             {/* WR */}
-                            <td style={{ padding: '14px 16px', fontWeight: 700, color: '#111827', fontFamily: 'monospace', fontSize: '13px' }}>
+                            <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827', fontFamily: 'monospace', fontSize: '13px' }}>
                               {pkg.numero_recibo_bodega}
                             </td>
 
                             {/* Tracking */}
-                            <td style={{ padding: '14px 16px', color: '#374151', fontFamily: 'monospace', fontSize: '12.5px' }}>
+                            <td style={{ padding: '12px 14px', color: '#374151', fontFamily: 'monospace', fontSize: '12.5px' }}>
                               {pkg.tracking || '—'}
                             </td>
 
                             {/* Cliente / Consignatario */}
-                            <td style={{ padding: '14px 16px', fontWeight: 700, color: '#111827' }}>
+                            <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
                               {pkg.nombre_consignatario || 'CLIENTE AMEX'}
                             </td>
 
                             {/* Tipo */}
-                            <td style={{ padding: '14px 16px', color: '#4b5563', textTransform: 'uppercase', fontSize: '12px', fontWeight: 600 }}>
+                            <td style={{ padding: '12px 14px', color: '#4b5563', textTransform: 'uppercase', fontSize: '12px', fontWeight: 600 }}>
                               {pkg.tipo_empaque || 'CAJA'}
                             </td>
 
                             {/* Peso */}
-                            <td style={{ padding: '14px 16px', fontWeight: 700, color: '#111827' }}>
+                            <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
                               {pkg.peso_kg != null ? Number(pkg.peso_kg).toFixed(2) : '—'}
                             </td>
 
                             {/* Estado (Solo Texto Plano, sin fondo ni colores) */}
-                            <td style={{ padding: '14px 16px', fontSize: '11.5px', fontWeight: 700, color: '#1f2937', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                            <td style={{ padding: '12px 14px', fontSize: '11.5px', fontWeight: 700, color: '#1f2937', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                               {estadoTexto}
                             </td>
 
                             {/* Registrado (2 líneas estilo TIB) */}
-                            <td style={{ padding: '14px 16px', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
+                            <td style={{ padding: '12px 14px', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
                               <div style={{ fontWeight: 600, color: '#111827' }}>{creado.date}</div>
                               <div style={{ fontSize: '11px', color: '#9ca3af' }}>{creado.time}</div>
                             </td>
 
                             {/* Modificado (2 líneas estilo TIB) */}
-                            <td style={{ padding: '14px 16px', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
+                            <td style={{ padding: '12px 14px', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
                               <div style={{ fontWeight: 600, color: '#111827' }}>{modificado.date}</div>
                               <div style={{ fontSize: '11px', color: '#9ca3af' }}>{modificado.time}</div>
                             </td>
 
                             {/* Documentos / Foto */}
-                            <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                               {pkg.tib_imagen_url ? (
                                 <button
                                   type="button"
