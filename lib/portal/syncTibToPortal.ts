@@ -34,10 +34,9 @@ export function cleanExactString(str: unknown): string {
 export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: string | null): string {
   const normTib = (estadoTib || '').toUpperCase();
   if (normTib === 'ENTREGADO' || estadoAmex === 'entregado') return 'ENTREGADO';
-  if (normTib === 'ENVIADO') return 'EN VUELO';
-  if (normTib === 'RECIBIDO') return 'RECIBIDO MIAMI';
-  if (estadoAmex === 'en_almacen' || estadoAmex === 'recibido') return 'EN ALMACÉN LINCE';
-  return 'RECIBIDO MIAMI';
+  if (normTib === 'ENVIADO') return 'ENVIADO';
+  if (normTib === 'RECIBIDO') return 'RECIBIDO';
+  return normTib || 'RECIBIDO';
 }
 
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';

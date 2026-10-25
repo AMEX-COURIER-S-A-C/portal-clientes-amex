@@ -73,7 +73,8 @@ export async function POST(req: Request) {
           q = q.eq('tipo_empaque', tipo.trim());
         }
         if (estado && typeof estado === 'string' && estado.trim()) {
-          q = q.ilike('estado_visible', `%${estado.trim()}%`);
+          const est = estado.trim();
+          q = q.or(`estado_tib.ilike.%${est}%,estado_visible.ilike.%${est}%`);
         }
         const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
         if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
@@ -89,11 +90,11 @@ export async function POST(req: Request) {
           q = q.lte('peso_kg', Number(pesoMax));
         }
       } else if (scope === 'recibido_miami') {
-        q = q.or('estado_visible.ilike.%miami%,estado_tib.ilike.%recibido%,estado_visible.ilike.%recibido%');
+        q = q.or('estado_tib.ilike.%recibido%,estado_visible.ilike.%recibido%');
       } else if (scope === 'en_transito') {
-        q = q.or('estado_visible.ilike.%tránsito%,estado_visible.ilike.%transito%,estado_visible.ilike.%despachado%,estado_visible.ilike.%enviado%,estado_tib.ilike.%enviado%');
+        q = q.or('estado_tib.ilike.%enviado%,estado_visible.ilike.%enviado%,estado_visible.ilike.%vuelo%');
       } else if (scope === 'entregado') {
-        q = q.or('estado_visible.ilike.%entregado%,estado_amex.ilike.%entregado%');
+        q = q.or('estado_tib.ilike.%entregado%,estado_visible.ilike.%entregado%');
       }
       // scope === 'all' no aplica filtros adicionales
 
@@ -166,7 +167,7 @@ export async function POST(req: Request) {
       },
       {
         header: { value: 'Estado', fontWeight: 'bold' as const },
-        cell: (p: any) => ({ value: p.estado_visible || p.estado_tib || 'RECIBIDO MIAMI' }),
+        cell: (p: any) => ({ value: p.estado_tib || p.estado_visible || 'RECIBIDO' }),
         width: 20,
       },
       {

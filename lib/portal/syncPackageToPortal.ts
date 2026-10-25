@@ -20,10 +20,11 @@ export interface PaqueteSyncData {
  * Calcula el texto de estado que verá el cliente en su panel
  */
 export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: string | null): string {
-  if (estadoAmex === 'entregado') return 'ENTREGADO';
-  if (estadoAmex === 'en_almacen' || estadoAmex === 'recibido') return 'EN ALMACÉN LINCE';
-  if (estadoTib === 'Enviado') return 'EN VUELO';
-  return 'RECIBIDO MIAMI';
+  const normTib = (estadoTib || '').toUpperCase();
+  if (normTib === 'ENTREGADO' || estadoAmex === 'entregado') return 'ENTREGADO';
+  if (normTib === 'ENVIADO') return 'ENVIADO';
+  if (normTib === 'RECIBIDO') return 'RECIBIDO';
+  return normTib || 'RECIBIDO';
 }
 
 /**

@@ -67,7 +67,7 @@ interface ClientePortalItem {
 }
 
 const TIPOS_EMPAQUE = ['CAJA', 'SOBRE', 'BOLSA'];
-const ESTADOS_DISPONIBLES = ['RECIBIDO MIAMI', 'EN VUELO', 'EN ALMACÉN LINCE', 'ENTREGADO'];
+const ESTADOS_DISPONIBLES = ['RECIBIDO', 'ENVIADO', 'ENTREGADO'];
 
 export default function ClienteDashboardTIB() {
   const router = useRouter();
@@ -279,7 +279,8 @@ export default function ClienteDashboardTIB() {
         query = query.eq('tipo_empaque', activeTipo.trim());
       }
       if (activeEstado.trim()) {
-        query = query.ilike('estado_visible', `%${activeEstado.trim()}%`);
+        const est = activeEstado.trim();
+        query = query.or(`estado_tib.ilike.%${est}%,estado_visible.ilike.%${est}%`);
       }
       if (activeFechaDesde.trim()) {
         const startIso = new Date(`${activeFechaDesde.trim()}T00:00:00`).toISOString();
@@ -898,13 +899,16 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Texto exacto del estado (solo texto plano)
+  // Texto exacto del estado según la información extraída de TIB
   const getEstadoTexto = (pkg: PaqueteTIB) => {
-    if (pkg.estado_visible) return pkg.estado_visible;
-    if (pkg.estado_amex === 'entregado') return 'ENTREGADO';
-    if (pkg.estado_amex === 'en_almacen' || pkg.estado_amex === 'recibido') return 'EN ALMACÉN LINCE';
-    if (pkg.estado_tib === 'Enviado') return 'EN VUELO';
-    return 'RECIBIDO MIAMI';
+    if (pkg.estado_tib) return pkg.estado_tib.toUpperCase();
+    if (pkg.estado_visible) {
+      const v = pkg.estado_visible.toUpperCase();
+      if (v === 'RECIBIDO MIAMI') return 'RECIBIDO';
+      if (v === 'EN VUELO') return 'ENVIADO';
+      return v;
+    }
+    return 'RECIBIDO';
   };
 
   // Pantalla de carga mientras se valida la autenticación para evitar cualquier parpadeo de contenido no autenticado

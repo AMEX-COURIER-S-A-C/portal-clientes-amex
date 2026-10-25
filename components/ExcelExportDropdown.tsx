@@ -239,10 +239,10 @@ export default function ExcelExportDropdown({
             Filtros Rápidos por Estado
           </div>
 
-          {/* 3. Solo Recibido Miami */}
+          {/* 3. Solo Recibido */}
           <button
             type="button"
-            onClick={() => handleExport('recibido_miami', 'Recibido Miami')}
+            onClick={() => handleExport('recibido_miami', 'Recibido')}
             style={dropdownItemStyle}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
@@ -250,15 +250,15 @@ export default function ExcelExportDropdown({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <PackageCheck style={{ width: '15px', height: '15px', color: '#059669' }} />
               <span style={{ fontWeight: 600, color: '#334155', fontSize: '12.5px' }}>
-                Solo Recibido Miami
+                Solo Recibidos
               </span>
             </div>
           </button>
 
-          {/* 4. Solo En Tránsito */}
+          {/* 4. Solo Enviado */}
           <button
             type="button"
-            onClick={() => handleExport('en_transito', 'En Tránsito')}
+            onClick={() => handleExport('en_transito', 'Enviado')}
             style={dropdownItemStyle}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
@@ -266,7 +266,7 @@ export default function ExcelExportDropdown({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Truck style={{ width: '15px', height: '15px', color: '#7c3aed' }} />
               <span style={{ fontWeight: 600, color: '#334155', fontSize: '12.5px' }}>
-                Solo En Tránsito
+                Solo Enviados
               </span>
             </div>
           </button>
