@@ -1,0 +1,33 @@
+{
+  "name": "portal-clientes-amex",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portal Oficial de Casillero Virtual y Seguimiento de Envíos - AMEX Courier",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "security-check": "node scripts/security-check.mjs",
+    "worker:tib-mirror": "node worker/tib-mirror-daemon.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
+    "lucide-react": "^1.28.0",
+    "next": "^16.3.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "resend": "^6.34.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^9",
+    "eslint-config-next": "^16.3.6",
+    "tailwindcss": "^4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

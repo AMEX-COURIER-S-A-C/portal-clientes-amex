@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# Visual Studio / VS Code
+.vscode/
+.vs/
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment / Secrets & Vercel
+.env*
+!.env.example
+.vercel/
+
+# TypeScript cache
+*.tsbuildinfo

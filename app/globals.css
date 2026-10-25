@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+@import "tailwindcss";
+
+:root {
+  --sap-shell-bg: #0f172a;
+  --sap-sidebar-bg: #1e293b;
+  --sap-sidebar-hover: #334155;
+  --sap-sidebar-active: #2563eb;
+  --sap-primary: #2563eb;
+  --sap-primary-hover: #1d4ed8;
+  --sap-accent: #38bdf8;
+  --sap-bg: #f8fafc;
+  --sap-card-bg: #ffffff;
+  --sap-text: #0f172a;
+  --sap-text-muted: #64748b;
+  --sap-border: #e2e8f0;
+  --sap-success: #059669;
+  --sap-warning: #d97706;
+  --sap-danger: #dc2626;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 25px rgba(0,0,0,0.08);
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--sap-bg) !important;
+  color: var(--sap-text) !important;
+  min-height: 100vh;
+}
