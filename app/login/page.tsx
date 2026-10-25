@@ -42,7 +42,7 @@ export default function ClienteLoginPage() {
   useEffect(() => {
     supabasePortal.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        router.push('/');
+        router.replace('/');
       }
     });
   }, [router]);

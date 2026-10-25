@@ -71,6 +71,7 @@ export default function ClienteDashboardTIB() {
   const router = useRouter();
 
   const [user, setUser] = useState<any | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
   const [paquetes, setPaquetes] = useState<PaqueteTIB[]>([]);
   const [totalSystemCount, setTotalSystemCount] = useState<number>(0);
@@ -321,14 +322,28 @@ export default function ClienteDashboardTIB() {
   useEffect(() => {
     let isMounted = true;
 
+    // Verificación inmediata en localStorage para redirigir sin mostrar la interfaz
+    try {
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('amex-portal-cliente-token') : null;
+      if (!storedToken) {
+        setIsAuthChecking(true);
+        router.replace('/login');
+        return;
+      }
+    } catch {
+      // Ignorar si localStorage no está accesible
+    }
+
     async function loadSession() {
       const { data: { session } } = await supabasePortal.auth.getSession();
       if (!isMounted) return;
       if (!session) {
-        router.push('/login');
+        setIsAuthChecking(true);
+        router.replace('/login');
         return;
       }
       setUser(session.user);
+      setIsAuthChecking(false);
       fetchTotalSystemCount(session.user.email);
       fetchPaquetes(session.user.email, 1);
       if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
@@ -341,8 +356,10 @@ export default function ClienteDashboardTIB() {
       if (!isMounted) return;
       if (event === 'SIGNED_OUT' || !session) {
         setUser(null);
-        router.push('/login');
+        setIsAuthChecking(true);
+        router.replace('/login');
       } else if (event === 'SIGNED_IN') {
+        setIsAuthChecking(false);
         setUser((prev: any) => {
           // Solo recargar si no había usuario o cambió de cuenta
           if (!prev || prev.id !== session.user.id) {
@@ -357,6 +374,7 @@ export default function ClienteDashboardTIB() {
       } else if (event === 'TOKEN_REFRESHED') {
         // En renovación silenciosa de token (al cambiar de ventana/foco), solo actualizar estado en memoria sin recargar la tabla
         setUser(session.user);
+        setIsAuthChecking(false);
       }
     });
 
@@ -770,6 +788,40 @@ export default function ClienteDashboardTIB() {
     if (pkg.estado_tib === 'Enviado') return 'EN VUELO';
     return 'RECIBIDO MIAMI';
   };
+
+  // Pantalla de carga mientras se valida la autenticación para evitar cualquier parpadeo de contenido no autenticado
+  if (isAuthChecking || !user) {
+    return (
+      <div 
+        style={{ 
+          minHeight: '100vh', 
+          backgroundColor: '#111827', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          gap: '16px' 
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/logo-amex-clean.png"
+          alt="AMEX Courier"
+          style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
+        />
+        <div 
+          style={{ 
+            width: '28px', 
+            height: '28px', 
+            border: '3px solid #ff5722', 
+            borderTopColor: 'transparent', 
+            borderRadius: '50%', 
+            animation: 'spin 0.8s linear infinite' 
+          }} 
+        />
+      </div>
+    );
+  }
 
   return (
     <div 
