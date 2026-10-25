@@ -463,7 +463,7 @@ export default function ClienteLoginPage() {
               }}
             >
               <i className={theme.badgeIcon} style={{ fontSize: '11px' }} />
-              <span>{theme.isHalloween ? 'Edición Halloween • Casillero Postal' : 'Casillero Postal Miami – Lima'}</span>
+              <span>{theme.isHalloween ? 'Edición Halloween' : 'Casillero Postal Miami – Lima'}</span>
             </div>
 
             {/* Contenedor del Logo Oficial AMEX Courier */}

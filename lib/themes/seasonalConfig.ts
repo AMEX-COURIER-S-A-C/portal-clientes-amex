@@ -59,7 +59,7 @@ export function getLoginThemeTokens(
       badgeBorder: '1px solid rgba(249, 115, 22, 0.42)',
       badgeColor: '#fb923c',
       badgeIcon: 'fa-solid fa-ghost',
-      badgeText: 'Edición Halloween • ERP Logístico',
+      badgeText: 'Edición Halloween',
       logoBoxBorder: '1px solid rgba(249, 115, 22, 0.32)',
       logoDropShadow: 'drop-shadow(0 4px 16px rgba(249, 115, 22, 0.32))',
       portalLabelColor: '#c084fc',
