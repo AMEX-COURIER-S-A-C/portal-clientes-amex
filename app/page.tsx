@@ -785,35 +785,39 @@ export default function ClienteDashboardTIB() {
       
       {/* 1. Header superior estilo TIB */}
       <header style={{ backgroundColor: '#1e2229', color: '#ffffff', height: '56px', display: 'flex', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 40 }}>
-        <div style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
           
-          {/* Logo y título + Tabs de Navegación Superadmin */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/images/logo-amex-clean.png"
-                alt="AMEX Courier"
-                style={{
-                  height: '30px',
-                  width: 'auto',
-                  objectFit: 'contain',
-                }}
-              />
-              <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#f3f4f6', borderLeft: '1px solid #4b5563', paddingLeft: '12px', letterSpacing: '-0.2px' }}>
-                Gestor de Almacén AMEX Courier
-              </span>
-            </div>
+          {/* Logo y título */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/logo-amex-clean.png"
+              alt="AMEX Courier"
+              style={{
+                height: '28px',
+                width: 'auto',
+                objectFit: 'contain',
+                flexShrink: 0,
+              }}
+            />
+            <span
+              className="hidden md:inline"
+              style={{ fontSize: '13px', fontWeight: 700, color: '#f3f4f6', borderLeft: '1px solid #4b5563', paddingLeft: '10px', letterSpacing: '-0.2px', whiteSpace: 'nowrap' }}
+            >
+              Gestor de Almacén AMEX Courier
+            </span>
           </div>
 
           {/* Usuario / Dropdown a la derecha */}
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px' }}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '5px 10px', borderRadius: '6px', maxWidth: '180px' }}
             >
-              <span>Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'USUARIO'}</span>
-              <ChevronDown style={{ width: '14px', height: '14px', color: '#9ca3af' }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'USUARIO'}
+              </span>
+              <ChevronDown style={{ width: '14px', height: '14px', color: '#9ca3af', flexShrink: 0 }} />
             </button>
 
             {userMenuOpen && (
@@ -887,29 +891,29 @@ export default function ClienteDashboardTIB() {
       </header>
 
       {/* 2. Contenedor de Contenido Principal */}
-      <main style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      <main className="p-3 sm:p-6" style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
         {/* ================= VISTA 1: LISTADO WAREHOUSE (LIMPIO, SIN BOTONES DE CONFIGURACIÓN) ================= */}
         {activeTab === 'warehouse' ? (
           <>
             {/* Título de la sección estilo TIB */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
               <div>
-                <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
+                <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
                   Listado Warehouse
                 </h1>
-                <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#6b7280' }}>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
                   Control y seguimiento de paquetes recibidos en el almacén de Miami y despachos a Lima.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '8px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-                  Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{(totalSystemCount || totalFilteredCount).toLocaleString()}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: '#6b7280', backgroundColor: '#ffffff', padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+                  Total: <strong style={{ color: '#111827', fontWeight: 800 }}>{(totalSystemCount || totalFilteredCount).toLocaleString()}</strong>
                 </span>
 
                 {activeFiltersCount > 0 && (
-                  <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '8px 12px', borderRadius: '6px', fontWeight: 700 }}>
+                  <span style={{ fontSize: '11.5px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '6px 10px', borderRadius: '6px', fontWeight: 700 }}>
                     {totalFilteredCount.toLocaleString()} coincidencia(s)
                   </span>
                 )}
@@ -923,8 +927,8 @@ export default function ClienteDashboardTIB() {
                     color: '#374151',
                     border: '1px solid #d1d5db',
                     borderRadius: '6px',
-                    padding: '8px 14px',
-                    fontSize: '12.5px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
                     fontWeight: 600,
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -935,16 +939,16 @@ export default function ClienteDashboardTIB() {
                   title="Refrescar lista de paquetes"
                 >
                   <RotateCw style={{ width: '13px', height: '13px', color: '#ff5722', animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
-                  <span>Actualizar Lista</span>
+                  <span>Actualizar</span>
                 </button>
               </div>
             </div>
 
             {/* Tarjeta de Filtros Estilo TIB */}
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="p-3.5 sm:p-5" style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               
               {/* Fila 1: 3 inputs amplios e independientes */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 
                 {/* Input # Warehouse */}
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -1029,7 +1033,7 @@ export default function ClienteDashboardTIB() {
               </div>
 
               {/* Fila 2: Selects de Tipo y Estado */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 
                 {/* Select Tipo de Paquete */}
                 <div>
@@ -1089,10 +1093,11 @@ export default function ClienteDashboardTIB() {
               </div>
 
               {/* Fila 3: Botones de Acción TIB */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '4px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={handleSearchClick}
+                  className="flex-1 sm:flex-initial"
                   style={{
                     backgroundColor: '#1e2229',
                     color: '#ffffff',
@@ -1104,29 +1109,36 @@ export default function ClienteDashboardTIB() {
                     letterSpacing: '0.4px',
                     cursor: 'pointer',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
-                    transition: 'all 0.15s ease'
+                    transition: 'all 0.15s ease',
+                    textAlign: 'center',
+                    justifyContent: 'center',
+                    display: 'inline-flex',
+                    alignItems: 'center',
                   }}
                 >
                   BUSCAR
                 </button>
 
-                <ExcelExportDropdown
-                  userEmail={user?.email}
-                  filters={{
-                    wr: filterWr,
-                    tracking: filterTracking,
-                    consignatario: filterConsignatario,
-                    tipo: filterTipo,
-                    estado: filterEstado,
-                  }}
-                  totalFilteredCount={totalFilteredCount}
-                  totalSystemCount={totalSystemCount}
-                />
+                <div className="flex-1 sm:flex-initial">
+                  <ExcelExportDropdown
+                    userEmail={user?.email}
+                    filters={{
+                      wr: filterWr,
+                      tracking: filterTracking,
+                      consignatario: filterConsignatario,
+                      tipo: filterTipo,
+                      estado: filterEstado,
+                    }}
+                    totalFilteredCount={totalFilteredCount}
+                    totalSystemCount={totalSystemCount}
+                  />
+                </div>
 
                 {activeFiltersCount > 0 && (
                   <button
                     type="button"
                     onClick={handleClearFilters}
+                    className="w-full sm:w-auto"
                     style={{
                       backgroundColor: '#ffffff',
                       color: '#4b5563',
@@ -1138,6 +1150,7 @@ export default function ClienteDashboardTIB() {
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: '6px',
                       transition: 'all 0.15s ease'
                     }}
@@ -1149,9 +1162,126 @@ export default function ClienteDashboardTIB() {
               </div>
             </div>
 
-            {/* 4. Tabla Principal Estilo TIB */}
+            {/* 4. Tabla Principal Estilo TIB (Dual Responsive: Tabla en Desktop, Tarjetas en Móvil) */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto', width: '100%' }}>
+              
+              {/* VISTA MÓVIL (block md:hidden): Tarjetas limpias optimizadas para celulares */}
+              <div className="block md:hidden">
+                {isLoading ? (
+                  <div style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
+                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '28px', height: '28px', border: '3px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      <span style={{ fontSize: '13px', fontWeight: 600 }}>Cargando paquetes desde almacén...</span>
+                    </div>
+                  </div>
+                ) : paginatedPaquetes.length === 0 ? (
+                  <div style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
+                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                      <Package style={{ width: '36px', height: '36px', color: '#d1d5db' }} />
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#374151' }}>No se encontraron paquetes registrados</span>
+                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>Intenta ajustar los filtros de búsqueda o consulta tu número de Warehouse.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {paginatedPaquetes.map((pkg) => {
+                      const creado = formatDateTimeTIB(pkg.creado_en);
+                      const estadoTexto = getEstadoTexto(pkg);
+
+                      return (
+                        <div key={pkg.id || pkg.numero_recibo_bodega} style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '9px', backgroundColor: '#ffffff' }}>
+                          {/* Fila 1: WR y Estado */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '13px', color: '#111827', backgroundColor: '#f3f4f6', padding: '3px 8px', borderRadius: '4px' }}>
+                              {pkg.numero_recibo_bodega}
+                            </span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', padding: '3px 8px', borderRadius: '4px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #ffedd5' }}>
+                              {estadoTexto}
+                            </span>
+                          </div>
+
+                          {/* Fila 2: Cliente */}
+                          <div>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                              Cliente / Consignatario
+                            </div>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: '#111827', marginTop: '1px' }}>
+                              {pkg.nombre_consignatario || 'CLIENTE AMEX'}
+                            </div>
+                          </div>
+
+                          {/* Fila 3: Tracking */}
+                          <div>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                              Tracking
+                            </div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#374151', wordBreak: 'break-all', marginTop: '1px' }}>
+                              {pkg.tracking || '—'}
+                            </div>
+                          </div>
+
+                          {/* Fila 4: Grid con Tipo, Peso y Fecha */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                            <div>
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b' }}>Tipo</div>
+                              <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', marginTop: '1px' }}>
+                                {pkg.tipo_empaque || 'CAJA'}
+                              </div>
+                            </div>
+                            <div style={{ borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b' }}>Peso</div>
+                              <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b', marginTop: '1px' }}>
+                                {pkg.peso_kg != null ? `${Number(pkg.peso_kg).toFixed(2)} kg` : '—'}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b' }}>Fecha</div>
+                              <div style={{ fontSize: '11px', fontWeight: 700, color: '#1e293b', marginTop: '1px' }}>
+                                {creado.date}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Fila 5: Foto */}
+                          {pkg.tib_imagen_url ? (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
+                              style={{
+                                width: '100%',
+                                backgroundColor: '#fff7ed',
+                                color: '#c2410c',
+                                border: '1px solid #ffedd5',
+                                borderRadius: '6px',
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                marginTop: '2px',
+                              }}
+                            >
+                              <Camera style={{ width: '14px', height: '14px', color: '#ea580c' }} />
+                              <span>Ver foto del paquete</span>
+                            </button>
+                          ) : (
+                            <div style={{ textAlign: 'center', fontSize: '11.5px', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '3px 0' }}>
+                              <Camera style={{ width: '13px', height: '13px', opacity: 0.5 }} />
+                              <span>Sin imagen disponible</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* VISTA ESCRITORIO (hidden md:block): Tabla completa estilo TIB */}
+              <div className="hidden md:block overflow-x-auto w-full">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                   
                   {/* Encabezado estilo TIB */}
@@ -1298,78 +1428,101 @@ export default function ClienteDashboardTIB() {
                 </table>
               </div>
 
-              {/* Paginación estilo TIB */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8f9fa', flexWrap: 'wrap', gap: '10px' }}>
+              {/* Paginación estilo TIB (Adaptada Responsive) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8f9fa', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                  Mostrando del <strong style={{ color: '#111827' }}>{totalFilteredCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</strong> al <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, totalFilteredCount)}</strong> de un total de <strong style={{ color: '#111827' }}>{totalFilteredCount.toLocaleString()}</strong> registros
+                  Pág. <strong style={{ color: '#111827' }}>{currentPage}</strong> de <strong style={{ color: '#111827' }}>{totalPages.toLocaleString()}</strong> ({totalFilteredCount.toLocaleString()} registros)
                 </span>
 
                 {totalPages > 1 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    {currentPage > 3 && (
+                  <>
+                    {/* Botones móviles compactos */}
+                    <div className="flex sm:hidden items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setCurrentPage(1)}
-                        style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
-                        title="Primera página"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
                       >
-                        « 1
+                        Anterior
                       </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
-                    >
-                      Anterior
-                    </button>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                      {paginationPages.map(page => (
-                        <button
-                          key={page}
-                          type="button"
-                          onClick={() => setCurrentPage(page)}
-                          style={{
-                            minWidth: '32px',
-                            height: '32px',
-                            padding: '0 6px',
-                            borderRadius: '4px',
-                            border: currentPage === page ? 'none' : '1px solid #d1d5db',
-                            backgroundColor: currentPage === page ? '#ff5722' : '#ffffff',
-                            color: currentPage === page ? '#ffffff' : '#374151',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {page}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
+                      >
+                        Siguiente
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
-                      style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
-                    >
-                      Siguiente
-                    </button>
+                    {/* Botones escritorio completos */}
+                    <div className="hidden sm:flex items-center gap-1">
+                      {currentPage > 3 && (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(1)}
+                          style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                          title="Primera página"
+                        >
+                          « 1
+                        </button>
+                      )}
 
-                    {currentPage < totalPages - 2 && (
                       <button
                         type="button"
-                        onClick={() => setCurrentPage(totalPages)}
-                        style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
-                        title="Última página"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
                       >
-                        {totalPages.toLocaleString()} »
+                        Anterior
                       </button>
-                    )}
-                  </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        {paginationPages.map(page => (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setCurrentPage(page)}
+                            style={{
+                              minWidth: '32px',
+                              height: '32px',
+                              padding: '0 6px',
+                              borderRadius: '4px',
+                              border: currentPage === page ? 'none' : '1px solid #d1d5db',
+                              backgroundColor: currentPage === page ? '#ff5722' : '#ffffff',
+                              color: currentPage === page ? '#ffffff' : '#374151',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
+                      >
+                        Siguiente
+                      </button>
+
+                      {currentPage < totalPages - 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(totalPages)}
+                          style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                          title="Última página"
+                        >
+                          {totalPages.toLocaleString()} »
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1932,7 +2085,7 @@ export default function ClienteDashboardTIB() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '720px', width: '100%', padding: '20px', position: 'relative' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '720px', width: '100%', padding: '16px', position: 'relative', maxHeight: '92vh', overflowY: 'auto' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1990,7 +2143,7 @@ export default function ClienteDashboardTIB() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '24px', position: 'relative' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '20px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2082,8 +2235,8 @@ export default function ClienteDashboardTIB() {
                 </div>
               </div>
 
-              {/* Teléfono y DNI en 2 columnas */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* Teléfono y DNI en 2 columnas responsive */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
                     Teléfono / WhatsApp
