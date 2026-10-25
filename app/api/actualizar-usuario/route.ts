@@ -160,6 +160,13 @@ export async function PUT(req: Request) {
             })
             .ilike('nombre_consignatario', `%${kw}%`);
         }
+
+        // Consultar también la API de TIB en vivo para garantizar que cualquier paquete histórico o reciente sea importado
+        try {
+          await syncTibPackagesToPortal({ specificEmail: clientEmail });
+        } catch (tibErr) {
+          console.warn('[ActualizarCliente] Aviso al sincronizar TIB API:', tibErr);
+        }
       }
 
       // Contar el total de paquetes ahora vinculados a este cliente
