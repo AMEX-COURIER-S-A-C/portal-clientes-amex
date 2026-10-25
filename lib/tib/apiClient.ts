@@ -7,8 +7,12 @@ export const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/aja
 
 export function getTibApiCredentials(): { url: string; email: string; password: string } {
   const url = (process.env.TIB_API_URL || DEFAULT_TIB_API_URL).trim();
-  const email = (process.env.TIB_API_EMAIL || 'operaciones@sistemaamexcourier.online').trim();
-  const password = (process.env.TIB_API_PASSWORD || 'Amex2024$!').trim();
+  const email = (process.env.TIB_API_EMAIL || '').trim();
+  const password = (process.env.TIB_API_PASSWORD || '').trim();
+
+  if (!email || !password) {
+    throw new Error('Faltan las credenciales TIB_API_EMAIL o TIB_API_PASSWORD en las variables de entorno.');
+  }
 
   return { url, email, password };
 }

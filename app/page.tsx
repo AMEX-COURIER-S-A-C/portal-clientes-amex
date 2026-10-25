@@ -829,9 +829,6 @@ export default function ClienteDashboardTIB() {
                 <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
                   <div>{user?.email}</div>
-                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                    Servidor: us-west-2 (Oregon)
-                  </div>
                 </div>
 
                 {isSuperadmin && (
@@ -1388,7 +1385,7 @@ export default function ClienteDashboardTIB() {
                       Panel de Configuración
                     </h1>
                     <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#6b7280' }}>
-                      Administración de clientes, asignación de casilleros y sincronización de base de datos Oregon.
+                      Administración de clientes, asignación de casilleros y sincronización de envíos.
                     </p>
                   </div>
                 </div>
@@ -1421,20 +1418,6 @@ export default function ClienteDashboardTIB() {
 
             {/* Fila de Tarjetas de Resumen Técnico */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-              
-              {/* Tarjeta Servidor */}
-              <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
-                  Servidor Base de Datos Clientes
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981' }} />
-                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#111827' }}>us-west-2 (Oregon, USA)</span>
-                </div>
-                <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }}>
-                  Base de datos 100% aislada e independiente para el portal de clientes.
-                </p>
-              </div>
 
               {/* Tarjeta Clientes */}
               <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>

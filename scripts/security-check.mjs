@@ -32,6 +32,14 @@ const SECRET_PATTERNS = [
     name: 'Contraseña o Credencial en URL de PostgreSQL',
     regex: /postgres(ql)?:\/\/[^:]+:[^@\s]{6,}@[^:\s]+:[0-9]+/g,
   },
+  {
+    name: 'Company Email Password / Hardcoded Password Literal',
+    regex: /(password|passwd|pwd)\s*[:=]\s*['"][^'"]{4,}['"]/gi,
+  },
+  {
+    name: 'TIB or Service Password Fallback',
+    regex: /(TIB_API_PASSWORD|TIB_PASSWORD|VPS_ROOT_PASSWORD)\s*\|\|\s*['"][^'"]+['"]/gi,
+  },
 ];
 
 // Archivos o extensiones permitidas / ignoradas
@@ -103,7 +111,15 @@ function runCheck() {
       const matches = content.match(pattern.regex);
       if (matches) {
         for (const match of matches) {
-          if (match.includes('your-api-key') || match.includes('YOUR_KEY') || match.includes('example') || match.includes('tu-anon-key') || match.includes('tu-service-role-key')) continue;
+          if (
+            match.includes('your-api-key') ||
+            match.includes('YOUR_KEY') ||
+            match.includes('example') ||
+            (match.includes('<') && match.includes('>')) ||
+            match.includes('tu-') ||
+            match.includes('dummy') ||
+            match.includes('placeholder')
+          ) continue;
           violations.push({
             file,
             secretType: pattern.name,
