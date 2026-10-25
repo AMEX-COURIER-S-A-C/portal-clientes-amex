@@ -786,7 +786,7 @@ export default function ClienteDashboardTIB() {
       
       {/* 1. Header superior estilo TIB */}
       <header style={{ backgroundColor: '#1e2229', color: '#ffffff', height: '56px', display: 'flex', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 40 }}>
-        <div style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <div className="px-4 sm:px-6 lg:px-8 xl:px-10" style={{ maxWidth: '1400px', width: '100%', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
           
           {/* Logo y título */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
@@ -892,7 +892,7 @@ export default function ClienteDashboardTIB() {
       </header>
 
       {/* 2. Contenedor de Contenido Principal */}
-      <main className="px-4 py-4 sm:px-6 sm:py-6 lg:px-8" style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <main className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 xl:px-10" style={{ maxWidth: '1400px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
         
         {/* ================= VISTA 1: LISTADO WAREHOUSE (LIMPIO, SIN BOTONES DE CONFIGURACIÓN) ================= */}
         {activeTab === 'warehouse' ? (
