@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import ExcelExportDropdown from '@/components/ExcelExportDropdown';
 import { 
   Search, 
   RotateCw, 
@@ -803,15 +804,6 @@ export default function ClienteDashboardTIB() {
                 Gestor de Almacén AMEX Courier
               </span>
             </div>
-            
-            {isSuperadmin && (
-              <span style={{ backgroundColor: '#ff5722', color: '#ffffff', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.4px', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                <ShieldCheck style={{ width: '12px', height: '12px' }} />
-                <span>Superadmin</span>
-              </span>
-            )}
-
-            
           </div>
 
           {/* Usuario / Dropdown a la derecha */}
@@ -1117,6 +1109,19 @@ export default function ClienteDashboardTIB() {
                 >
                   BUSCAR
                 </button>
+
+                <ExcelExportDropdown
+                  userEmail={user?.email}
+                  filters={{
+                    wr: filterWr,
+                    tracking: filterTracking,
+                    consignatario: filterConsignatario,
+                    tipo: filterTipo,
+                    estado: filterEstado,
+                  }}
+                  totalFilteredCount={totalFilteredCount}
+                  totalSystemCount={totalSystemCount}
+                />
 
                 {activeFiltersCount > 0 && (
                   <button
