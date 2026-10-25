@@ -20,6 +20,11 @@ export interface ExcelExportDropdownProps {
     consignatario: string;
     tipo: string;
     estado: string;
+    fechaTipo?: 'creado_en' | 'actualizado_en';
+    fechaDesde?: string;
+    fechaHasta?: string;
+    pesoMin?: string;
+    pesoMax?: string;
   };
   totalFilteredCount: number;
   totalSystemCount: number;

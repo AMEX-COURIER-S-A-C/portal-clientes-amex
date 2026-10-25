@@ -28,7 +28,9 @@ import {
   AlertCircle,
   Settings,
   Pencil,
-  ArrowRightLeft
+  ArrowRightLeft,
+  SlidersHorizontal,
+  Calendar
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -90,6 +92,15 @@ export default function ClienteDashboardTIB() {
   const [filterConsignatario, setFilterConsignatario] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+
+  // Filtros avanzados, rangos y fechas profesionales
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filterFechaTipo, setFilterFechaTipo] = useState<'creado_en' | 'actualizado_en'>('creado_en');
+  const [filterFechaDesde, setFilterFechaDesde] = useState('');
+  const [filterFechaHasta, setFilterFechaHasta] = useState('');
+  const [filterPesoMin, setFilterPesoMin] = useState('');
+  const [filterPesoMax, setFilterPesoMax] = useState('');
+  const [datePreset, setDatePreset] = useState<string>('all');
 
   // Modal para ver foto
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; wr: string } | null>(null);
@@ -211,6 +222,11 @@ export default function ClienteDashboardTIB() {
       consignatario?: string;
       tipo?: string;
       estado?: string;
+      fechaTipo?: 'creado_en' | 'actualizado_en';
+      fechaDesde?: string;
+      fechaHasta?: string;
+      pesoMin?: string;
+      pesoMax?: string;
     }
   ) => {
     if (!email) return;
@@ -244,6 +260,11 @@ export default function ClienteDashboardTIB() {
       const activeConsignatario = customFilters?.consignatario !== undefined ? customFilters.consignatario : filterConsignatario;
       const activeTipo = customFilters?.tipo !== undefined ? customFilters.tipo : filterTipo;
       const activeEstado = customFilters?.estado !== undefined ? customFilters.estado : filterEstado;
+      const activeFechaTipo = customFilters?.fechaTipo !== undefined ? customFilters.fechaTipo : filterFechaTipo;
+      const activeFechaDesde = customFilters?.fechaDesde !== undefined ? customFilters.fechaDesde : filterFechaDesde;
+      const activeFechaHasta = customFilters?.fechaHasta !== undefined ? customFilters.fechaHasta : filterFechaHasta;
+      const activePesoMin = customFilters?.pesoMin !== undefined ? customFilters.pesoMin : filterPesoMin;
+      const activePesoMax = customFilters?.pesoMax !== undefined ? customFilters.pesoMax : filterPesoMax;
 
       if (activeWr.trim()) {
         query = query.ilike('numero_recibo_bodega', `%${activeWr.trim()}%`);
@@ -259,6 +280,20 @@ export default function ClienteDashboardTIB() {
       }
       if (activeEstado.trim()) {
         query = query.ilike('estado_visible', `%${activeEstado.trim()}%`);
+      }
+      if (activeFechaDesde.trim()) {
+        const startIso = new Date(`${activeFechaDesde.trim()}T00:00:00`).toISOString();
+        query = query.gte(activeFechaTipo, startIso);
+      }
+      if (activeFechaHasta.trim()) {
+        const endIso = new Date(`${activeFechaHasta.trim()}T23:59:59.999`).toISOString();
+        query = query.lte(activeFechaTipo, endIso);
+      }
+      if (activePesoMin.trim() && !isNaN(Number(activePesoMin))) {
+        query = query.gte('peso_kg', Number(activePesoMin));
+      }
+      if (activePesoMax.trim() && !isNaN(Number(activePesoMax))) {
+        query = query.lte('peso_kg', Number(activePesoMax));
       }
 
       const from = (page - 1) * itemsPerPage;
@@ -278,7 +313,11 @@ export default function ClienteDashboardTIB() {
         activeTracking.trim() ||
         activeConsignatario.trim() ||
         activeTipo.trim() ||
-        activeEstado.trim()
+        activeEstado.trim() ||
+        activeFechaDesde.trim() ||
+        activeFechaHasta.trim() ||
+        activePesoMin.trim() ||
+        activePesoMax.trim()
       );
       if (!hasFilters) {
         setTotalSystemCount(countNum);
@@ -289,7 +328,7 @@ export default function ClienteDashboardTIB() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, itemsPerPage]);
+  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, filterFechaTipo, filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax, itemsPerPage]);
 
   // Cargar lista de clientes registrados en el portal
   const fetchClientsList = useCallback(async () => {
@@ -406,7 +445,7 @@ export default function ClienteDashboardTIB() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [user?.email, currentPage, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, fetchPaquetes]);
+  }, [user?.email, currentPage, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, filterFechaTipo, filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax, fetchPaquetes]);
 
   const handleLogout = async () => {
     await supabasePortal.auth.signOut();
@@ -707,6 +746,67 @@ export default function ClienteDashboardTIB() {
     );
   }, [clientsList, clientSearchQuery]);
 
+  // Helper para formatear Date a input type="date" YYYY-MM-DD
+  const formatDateForInput = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Selector rápido de períodos de fechas
+  const applyDatePreset = (preset: string) => {
+    setDatePreset(preset);
+    const now = new Date();
+
+    if (preset === 'all') {
+      setFilterFechaDesde('');
+      setFilterFechaHasta('');
+      return;
+    }
+    if (preset === 'today') {
+      const todayStr = formatDateForInput(now);
+      setFilterFechaDesde(todayStr);
+      setFilterFechaHasta(todayStr);
+      return;
+    }
+    if (preset === 'yesterday') {
+      const yest = new Date(now);
+      yest.setDate(yest.getDate() - 1);
+      const yestStr = formatDateForInput(yest);
+      setFilterFechaDesde(yestStr);
+      setFilterFechaHasta(yestStr);
+      return;
+    }
+    if (preset === '7days') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      setFilterFechaDesde(formatDateForInput(start));
+      setFilterFechaHasta(formatDateForInput(now));
+      return;
+    }
+    if (preset === '30days') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      setFilterFechaDesde(formatDateForInput(start));
+      setFilterFechaHasta(formatDateForInput(now));
+      return;
+    }
+    if (preset === 'thisMonth') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFilterFechaDesde(formatDateForInput(start));
+      setFilterFechaHasta(formatDateForInput(now));
+      return;
+    }
+    if (preset === 'lastMonth') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      setFilterFechaDesde(formatDateForInput(start));
+      setFilterFechaHasta(formatDateForInput(end));
+      return;
+    }
+  };
+
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filterWr.trim()) count++;
@@ -714,8 +814,17 @@ export default function ClienteDashboardTIB() {
     if (filterConsignatario.trim()) count++;
     if (filterTipo.trim()) count++;
     if (filterEstado.trim()) count++;
+    if (filterFechaDesde.trim() || filterFechaHasta.trim()) count++;
+    if (filterPesoMin.trim() || filterPesoMax.trim()) count++;
     return count;
-  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado]);
+  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax]);
+
+  const advancedFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterFechaDesde.trim() || filterFechaHasta.trim()) count++;
+    if (filterPesoMin.trim() || filterPesoMax.trim()) count++;
+    return count;
+  }, [filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax]);
 
   const handleClearFilters = () => {
     setFilterWr('');
@@ -723,6 +832,11 @@ export default function ClienteDashboardTIB() {
     setFilterConsignatario('');
     setFilterTipo('');
     setFilterEstado('');
+    setFilterFechaDesde('');
+    setFilterFechaHasta('');
+    setFilterPesoMin('');
+    setFilterPesoMax('');
+    setDatePreset('all');
     setCurrentPage(1);
     fetchPaquetes(user?.email, 1, {
       wr: '',
@@ -730,6 +844,10 @@ export default function ClienteDashboardTIB() {
       consignatario: '',
       tipo: '',
       estado: '',
+      fechaDesde: '',
+      fechaHasta: '',
+      pesoMin: '',
+      pesoMax: '',
     });
   };
 
@@ -1181,11 +1299,67 @@ export default function ClienteDashboardTIB() {
                       consignatario: filterConsignatario,
                       tipo: filterTipo,
                       estado: filterEstado,
+                      fechaTipo: filterFechaTipo,
+                      fechaDesde: filterFechaDesde,
+                      fechaHasta: filterFechaHasta,
+                      pesoMin: filterPesoMin,
+                      pesoMax: filterPesoMax,
                     }}
                     totalFilteredCount={totalFilteredCount}
                     totalSystemCount={totalSystemCount}
                   />
                 </div>
+
+                {/* Botón de Filtros Profesionales y Rangos */}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters(prev => !prev)}
+                  className="w-auto"
+                  style={{
+                    backgroundColor: showAdvancedFilters || advancedFiltersCount > 0 ? '#fff7ed' : '#ffffff',
+                    color: showAdvancedFilters || advancedFiltersCount > 0 ? '#c2410c' : '#374151',
+                    border: showAdvancedFilters || advancedFiltersCount > 0 ? '1.5px solid #ff5722' : '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    letterSpacing: '0.3px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                    boxShadow: showAdvancedFilters ? '0 1px 3px rgba(234, 88, 12, 0.15)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <SlidersHorizontal style={{ width: '14px', height: '14px', color: showAdvancedFilters || advancedFiltersCount > 0 ? '#ea580c' : '#4b5563' }} />
+                  <span>FILTROS Y FECHAS</span>
+                  {advancedFiltersCount > 0 && (
+                    <span
+                      style={{
+                        backgroundColor: '#ff5722',
+                        color: '#ffffff',
+                        fontSize: '10.5px',
+                        fontWeight: 900,
+                        padding: '1px 6px',
+                        borderRadius: '999px',
+                        minWidth: '18px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {advancedFiltersCount}
+                    </span>
+                  )}
+                  <ChevronDown 
+                    style={{ 
+                      width: '13px', 
+                      height: '13px', 
+                      transform: showAdvancedFilters ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease',
+                      color: showAdvancedFilters || advancedFiltersCount > 0 ? '#ea580c' : '#6b7280'
+                    }} 
+                  />
+                </button>
 
                 {activeFiltersCount > 0 && (
                   <button
@@ -1209,10 +1383,293 @@ export default function ClienteDashboardTIB() {
                     }}
                   >
                     <FilterX style={{ width: '14px', height: '14px', color: '#6b7280' }} />
-                    <span>LIMPIAR FILTROS</span>
+                    <span>LIMPIAR TODO</span>
                   </button>
                 )}
               </div>
+
+              {/* Panel Desplegable de Filtros Profesionales y Rangos */}
+              {showAdvancedFilters && (
+                <div
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginTop: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.03)'
+                  }}
+                >
+                  {/* Encabezado del panel avanzado */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Calendar style={{ width: '16px', height: '16px', color: '#ff5722' }} />
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#111827', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                        Filtro Avanzado por Fechas y Rangos
+                      </span>
+                    </div>
+                    {advancedFiltersCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          applyDatePreset('all');
+                          setFilterPesoMin('');
+                          setFilterPesoMax('');
+                          setCurrentPage(1);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#dc2626',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          padding: '2px 6px'
+                        }}
+                      >
+                        Limpiar fechas y peso
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Selector rápido por períodos (Presets) */}
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Períodos Rápidos:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {[
+                        { id: 'all', label: 'Todo el historial' },
+                        { id: 'today', label: 'Hoy' },
+                        { id: 'yesterday', label: 'Ayer' },
+                        { id: '7days', label: 'Últimos 7 días' },
+                        { id: '30days', label: 'Últimos 30 días' },
+                        { id: 'thisMonth', label: 'Este mes' },
+                        { id: 'lastMonth', label: 'Mes anterior' },
+                      ].map((p) => {
+                        const isActive = datePreset === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              applyDatePreset(p.id);
+                              setCurrentPage(1);
+                            }}
+                            style={{
+                              backgroundColor: isActive ? '#1e2229' : '#ffffff',
+                              color: isActive ? '#ffffff' : '#374151',
+                              border: isActive ? '1px solid #1e2229' : '1px solid #cbd5e1',
+                              borderRadius: '6px',
+                              padding: '5px 12px',
+                              fontSize: '12px',
+                              fontWeight: isActive ? 700 : 500,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Configuración detallada de fechas y rango de peso */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+                    {/* Selector de Campo Fecha */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                        CRITERIO DE FECHA
+                      </label>
+                      <select
+                        value={filterFechaTipo}
+                        onChange={(e) => {
+                          setFilterFechaTipo(e.target.value as 'creado_en' | 'actualizado_en');
+                          setCurrentPage(1);
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '38px',
+                          padding: '0 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12.5px',
+                          color: '#111827',
+                          backgroundColor: '#ffffff',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="creado_en">Fecha Registro (Miami)</option>
+                        <option value="actualizado_en">Fecha Modificado</option>
+                      </select>
+                    </div>
+
+                    {/* Fecha Desde */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                        FECHA DESDE
+                      </label>
+                      <input
+                        type="date"
+                        value={filterFechaDesde}
+                        onChange={(e) => {
+                          setDatePreset('custom');
+                          setFilterFechaDesde(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '38px',
+                          padding: '0 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12.5px',
+                          color: '#111827',
+                          backgroundColor: '#ffffff',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    {/* Fecha Hasta */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                        FECHA HASTA
+                      </label>
+                      <input
+                        type="date"
+                        value={filterFechaHasta}
+                        onChange={(e) => {
+                          setDatePreset('custom');
+                          setFilterFechaHasta(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '38px',
+                          padding: '0 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12.5px',
+                          color: '#111827',
+                          backgroundColor: '#ffffff',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    {/* Rango de Peso */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                        RANGO DE PESO (KG)
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Mín"
+                          value={filterPesoMin}
+                          onChange={(e) => {
+                            setFilterPesoMin(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          style={{
+                            width: '50%',
+                            height: '38px',
+                            padding: '0 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12.5px',
+                            color: '#111827',
+                            backgroundColor: '#ffffff',
+                            outline: 'none'
+                          }}
+                        />
+                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>–</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Máx"
+                          value={filterPesoMax}
+                          onChange={(e) => {
+                            setFilterPesoMax(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          style={{
+                            width: '50%',
+                            height: '38px',
+                            padding: '0 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12.5px',
+                            color: '#111827',
+                            backgroundColor: '#ffffff',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Chips de Filtros Activos con eliminación rápida */}
+              {activeFiltersCount > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', paddingTop: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Filtros aplicados:
+                  </span>
+                  {filterWr.trim() && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      WR: {filterWr}
+                      <X onClick={() => { setFilterWr(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                  {filterTracking.trim() && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      Tracking: {filterTracking}
+                      <X onClick={() => { setFilterTracking(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                  {filterConsignatario.trim() && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      Cliente: {filterConsignatario}
+                      <X onClick={() => { setFilterConsignatario(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                  {filterTipo.trim() && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      Tipo: {filterTipo}
+                      <X onClick={() => { setFilterTipo(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                  {filterEstado.trim() && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      Estado: {filterEstado}
+                      <X onClick={() => { setFilterEstado(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                  {(filterFechaDesde.trim() || filterFechaHasta.trim()) && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      📅 {filterFechaTipo === 'actualizado_en' ? 'Modificado' : 'Registro'}: {filterFechaDesde || 'Inicio'} al {filterFechaHasta || 'Hoy'}
+                      <X onClick={() => { applyDatePreset('all'); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                  {(filterPesoMin.trim() || filterPesoMax.trim()) && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
+                      ⚖ Peso: {filterPesoMin ? `${filterPesoMin}kg` : '0'} a {filterPesoMax ? `${filterPesoMax}kg` : '∞'}
+                      <X onClick={() => { setFilterPesoMin(''); setFilterPesoMax(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 4. Tabla Principal Estilo TIB (Visualización en Tabla con Scroll Horizontal Táctil en Móvil) */}

@@ -59,7 +59,7 @@ export async function POST(req: Request) {
 
       // Aplicar lógica según el alcance (scope)
       if (scope === 'filtered') {
-        const { wr, tracking, consignatario, tipo, estado } = filters;
+        const { wr, tracking, consignatario, tipo, estado, fechaTipo, fechaDesde, fechaHasta, pesoMin, pesoMax } = filters;
         if (wr && typeof wr === 'string' && wr.trim()) {
           q = q.ilike('numero_recibo_bodega', `%${wr.trim()}%`);
         }
@@ -74,6 +74,19 @@ export async function POST(req: Request) {
         }
         if (estado && typeof estado === 'string' && estado.trim()) {
           q = q.ilike('estado_visible', `%${estado.trim()}%`);
+        }
+        const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
+        if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
+          q = q.gte(colFecha, new Date(`${fechaDesde.trim()}T00:00:00`).toISOString());
+        }
+        if (fechaHasta && typeof fechaHasta === 'string' && fechaHasta.trim()) {
+          q = q.lte(colFecha, new Date(`${fechaHasta.trim()}T23:59:59.999`).toISOString());
+        }
+        if (pesoMin !== undefined && pesoMin !== '' && !isNaN(Number(pesoMin))) {
+          q = q.gte('peso_kg', Number(pesoMin));
+        }
+        if (pesoMax !== undefined && pesoMax !== '' && !isNaN(Number(pesoMax))) {
+          q = q.lte('peso_kg', Number(pesoMax));
         }
       } else if (scope === 'recibido_miami') {
         q = q.or('estado_visible.ilike.%miami%,estado_tib.ilike.%recibido%,estado_visible.ilike.%recibido%');
