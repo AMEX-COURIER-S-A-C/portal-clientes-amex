@@ -7,27 +7,49 @@ export async function GET() {
   try {
     const portalAdmin = getPortalAdmin();
 
-    // Consultar clientes_portal y la lista de usuarios en Auth Oregon en paralelo
-    const [profilesRes, authRes] = await Promise.all([
-      portalAdmin
+    // 1. Consultar todos los perfiles en clientes_portal con paginación automática (sin tope de 1,000)
+    const allProfiles: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await portalAdmin
         .from('clientes_portal')
         .select('*')
-        .order('creado_en', { ascending: false }),
-      portalAdmin.auth.admin.listUsers({ perPage: 1000 }),
-    ]);
+        .order('creado_en', { ascending: false })
+        .range(from, from + pageSize - 1);
 
-    if (profilesRes.error) {
-      throw profilesRes.error;
+      if (error) {
+        throw error;
+      }
+      if (!data || data.length === 0) break;
+      allProfiles.push(...data);
+      if (data.length < pageSize) break;
+      from += pageSize;
     }
 
-    const authMap = new Map((authRes.data?.users || []).map((u) => [u.id, u]));
+    // 2. Consultar todos los usuarios en Supabase Auth con paginación automática
+    const allAuthUsers: any[] = [];
+    let authPage = 1;
+    while (true) {
+      const { data, error } = await portalAdmin.auth.admin.listUsers({
+        page: authPage,
+        perPage: 1000,
+      });
+      if (error || !data?.users || data.users.length === 0) break;
+      allAuthUsers.push(...data.users);
+      if (data.users.length < 1000) break;
+      authPage++;
+    }
 
-    const merged = (profilesRes.data || []).map((p) => {
-      const auth = authMap.get(p.id) || (authRes.data?.users || []).find((u) => u.email?.toLowerCase() === p.email?.toLowerCase());
+    const authMap = new Map(allAuthUsers.map((u) => [u.id, u]));
+
+    const merged = allProfiles.map((p) => {
+      const auth =
+        authMap.get(p.id) ||
+        allAuthUsers.find((u) => u.email?.toLowerCase() === p.email?.toLowerCase());
 
       const passwordEstablecido = Boolean(
-        auth?.last_sign_in_at ||
-        auth?.user_metadata?.password_establecido === true
+        auth?.last_sign_in_at || auth?.user_metadata?.password_establecido === true
       );
 
       return {

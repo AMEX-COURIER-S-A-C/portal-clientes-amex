@@ -37,29 +37,46 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
 
   const portalAdmin = getPortalAdmin();
 
-  // 1. Obtener la lista de clientes registrados en el portal
-  const { data: clientes, error: cErr } = await portalAdmin
-    .from('clientes_portal')
-    .select('email, nombre_completo, alias_palabras_clave')
-    .eq('activo', true);
+  // 1. Obtener todos los clientes activos registrados en el portal (paginado sin tope de 1,000)
+  const clientes: any[] = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error: cErr } = await portalAdmin
+      .from('clientes_portal')
+      .select('email, nombre_completo, alias_palabras_clave')
+      .eq('activo', true)
+      .range(from, from + pageSize - 1);
 
-  if (cErr) {
-    console.error('[PortalSync] Error al obtener clientes_portal:', cErr);
+    if (cErr) {
+      console.error('[PortalSync] Error al obtener clientes_portal:', cErr);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    clientes.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
   }
 
-  const clientesList = (clientes || []).filter((c) => !isSuperadminEmail(c.email));
+  const clientesList = clientes.filter((c) => !isSuperadminEmail(c.email));
 
-  // Función para encontrar el email del cliente por coincidencia de nombre
+  // Función para encontrar el email del cliente por coincidencia de nombre o alias (con y sin espacios)
   const findClientEmail = (consignatario: string, explicitEmail?: string | null): string | null => {
     if (explicitEmail && explicitEmail.includes('@')) return explicitEmail.trim().toLowerCase();
     if (!consignatario) return null;
 
     const cleanConsignee = consignatario.trim().toUpperCase();
+    const compactConsignee = cleanConsignee.replace(/\s+/g, '');
 
     for (const c of clientesList) {
       const cName = c.nombre_completo.trim().toUpperCase();
-      // Coincidencia exacta o contenida
-      if (cleanConsignee.includes(cName) || cName.includes(cleanConsignee)) {
+      const compactName = cName.replace(/\s+/g, '');
+      // Coincidencia exacta, contenida o compactada sin espacios (ej. ARIA SHOP <-> ARIASHOP)
+      if (
+        cleanConsignee.includes(cName) ||
+        cName.includes(cleanConsignee) ||
+        (compactName.length >= 5 && compactConsignee.includes(compactName))
+      ) {
         return c.email.toLowerCase();
       }
 
@@ -67,7 +84,13 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
       if (Array.isArray(c.alias_palabras_clave)) {
         for (const alias of c.alias_palabras_clave) {
           const cleanAlias = String(alias).trim().toUpperCase();
-          if (cleanAlias && (cleanConsignee.includes(cleanAlias) || cleanAlias.includes(cleanConsignee))) {
+          const compactAlias = cleanAlias.replace(/\s+/g, '');
+          if (
+            cleanAlias &&
+            (cleanConsignee.includes(cleanAlias) ||
+              cleanAlias.includes(cleanConsignee) ||
+              (compactAlias.length >= 5 && compactConsignee.includes(compactAlias)))
+          ) {
             return c.email.toLowerCase();
           }
         }

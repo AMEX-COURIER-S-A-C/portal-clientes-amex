@@ -140,6 +140,10 @@ export async function POST(req: Request) {
           const clean = cleanExactString(item);
           if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
             validKeywords.push(clean);
+            const compact = clean.replace(/\s+/g, '');
+            if (compact.length >= 5 && compact !== clean && !validKeywords.includes(compact)) {
+              validKeywords.push(compact);
+            }
           }
         }
 
