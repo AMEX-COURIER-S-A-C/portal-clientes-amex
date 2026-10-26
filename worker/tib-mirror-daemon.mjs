@@ -771,7 +771,7 @@ async function runMirrorSyncCycle() {
         recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
       }
-      if (false) {
+      if (false) { {
           if (entry.statusTib === 'ENVIADO') {
             clientCandidatesToNotify.push({
               type: 'ENVIADO',
