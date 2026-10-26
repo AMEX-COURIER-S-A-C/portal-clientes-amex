@@ -501,9 +501,6 @@ export default function ClienteDashboardTIB() {
         body: JSON.stringify({
           nombre_completo: newClientNombre,
           email: newClientEmail,
-
-          telefono: newClientTelefono,
-          documento_identidad: newClientDni,
           alias_palabras_clave: keywordsArray,
         }),
       });
@@ -522,9 +519,6 @@ export default function ClienteDashboardTIB() {
       setNewClientNombre('');
       setSelectedTibClient(null);
       setNewClientEmail('');
-
-      setNewClientTelefono('');
-      setNewClientDni('');
       setNewClientKeywords('');
 
       // Recargar listas
@@ -603,8 +597,6 @@ export default function ClienteDashboardTIB() {
         body: JSON.stringify({
           id: editingClient.id,
           nombre_completo: editNombre,
-          telefono: editTelefono,
-          documento_identidad: editDni,
           casillero_codigo: editCasillero,
           alias_palabras_clave: keywordsArray,
         }),
@@ -2144,7 +2136,7 @@ export default function ClienteDashboardTIB() {
                         type="text"
                         value={clientSearchQuery}
                         onChange={(e) => setClientSearchQuery(e.target.value)}
-                        placeholder="Buscar cliente, correo, DNI..."
+                        placeholder="Buscar cliente por nombre o correo..."
                         style={{
                           width: '100%',
                           height: '38px',
@@ -2166,7 +2158,6 @@ export default function ClienteDashboardTIB() {
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Casillero</th>
-                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Teléfono / Documento</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
@@ -2176,14 +2167,14 @@ export default function ClienteDashboardTIB() {
                       <tbody>
                         {isLoadingClients ? (
                           <tr>
-                            <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
                               <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
                               <span>Cargando directorio de clientes...</span>
                             </td>
                           </tr>
                         ) : filteredClientsList.length === 0 ? (
                           <tr>
-                            <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
                               <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
                               <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
                               <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón "+ Agregar Cliente".</p>
@@ -2202,12 +2193,6 @@ export default function ClienteDashboardTIB() {
                                 <span style={{ backgroundColor: '#f3f4f6', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, color: '#374151', fontFamily: 'monospace' }}>
                                   {c.casillero_codigo || `AMX-${String(idx + 1).padStart(3, '0')}`}
                                 </span>
-                              </td>
-                              <td style={{ padding: '12px 14px', color: '#4b5563' }}>
-                                <div>{c.telefono || '—'}</div>
-                                {c.documento_identidad && (
-                                  <div style={{ fontSize: '11px', color: '#9ca3af' }}>Doc: {c.documento_identidad}</div>
-                                )}
                               </td>
                               <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
                                 {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
@@ -2639,35 +2624,6 @@ export default function ClienteDashboardTIB() {
                 </div>
               </div>
 
-              {/* Teléfono y DNI en 2 columnas responsive */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
-                    Teléfono / WhatsApp
-                  </label>
-                  <input
-                    type="tel"
-                    value={newClientTelefono}
-                    onChange={(e) => setNewClientTelefono(e.target.value)}
-                    placeholder="Ej: 987654321"
-                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
-                    DNI o RUC
-                  </label>
-                  <input
-                    type="text"
-                    value={newClientDni}
-                    onChange={(e) => setNewClientDni(e.target.value)}
-                    placeholder="Ej: 71234567"
-                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
-                  />
-                </div>
-              </div>
-
               {/* Variaciones o Palabras Clave con Buscador TIB */}
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -3001,42 +2957,15 @@ export default function ClienteDashboardTIB() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
-                    Código Casillero
-                  </label>
-                  <input
-                    type="text"
-                    value={editCasillero}
-                    onChange={(e) => setEditCasillero(e.target.value)}
-                    placeholder="Ej: AMX-001 o 31888"
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
-                    DNI / RUC
-                  </label>
-                  <input
-                    type="text"
-                    value={editDni}
-                    onChange={(e) => setEditDni(e.target.value)}
-                    placeholder="Documento de identidad"
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
-                  />
-                </div>
-              </div>
-
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
-                  Teléfono de Contacto
+                  Código Casillero
                 </label>
                 <input
                   type="text"
-                  value={editTelefono}
-                  onChange={(e) => setEditTelefono(e.target.value)}
-                  placeholder="Ej: 987654321"
+                  value={editCasillero}
+                  onChange={(e) => setEditCasillero(e.target.value)}
+                  placeholder="Ej: AMX-001 o 31888"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
                 />
               </div>

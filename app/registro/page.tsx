@@ -28,8 +28,6 @@ function ClienteRegistroForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [documentoIdentidad, setDocumentoIdentidad] = useState('');
-  const [telefono, setTelefono] = useState('');
   const [direccion, setDireccion] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
@@ -67,8 +65,6 @@ function ClienteRegistroForm() {
         options: {
           data: {
             nombre_completo: nombre.trim(),
-            telefono: telefono.trim(),
-            documento_identidad: documentoIdentidad.trim(),
             rol: 'cliente',
           },
         },
@@ -82,8 +78,6 @@ function ClienteRegistroForm() {
           id: authData.user.id,
           nombre_completo: nombre.trim().toUpperCase(),
           email: email.trim().toLowerCase(),
-          telefono: telefono.trim(),
-          documento_identidad: documentoIdentidad.trim(),
           alias_palabras_clave: [nombre.trim().toUpperCase()],
           activo: true,
         });
@@ -205,41 +199,6 @@ function ClienteRegistroForm() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              DNI o RUC *
-            </label>
-            <div className="relative">
-              <FileText className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                required
-                value={documentoIdentidad}
-                onChange={(e) => setDocumentoIdentidad(e.target.value)}
-                placeholder="8 u 11 dígitos"
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Teléfono / WhatsApp *
-            </label>
-            <div className="relative">
-              <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="tel"
-                required
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                placeholder="999 888 777"
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
-              />
-            </div>
-          </div>
-        </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-300 mb-1.5">
