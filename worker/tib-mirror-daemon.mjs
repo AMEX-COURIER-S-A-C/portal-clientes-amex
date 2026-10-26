@@ -560,7 +560,7 @@ async function runMirrorSyncCycle() {
     // 1. Obtener directorio de clientes registrados en tiempo real
     const { data: clientes, error: cErr } = await sb
       .from('clientes_portal')
-      .select('id, email, nombre_completo, alias_palabras_clave, casillero_codigo')
+      .select('id, email, nombre_completo, alias_palabras_clave')
       .eq('activo', true);
 
     if (cErr) throw new Error(`Fallo al leer clientes_portal: ${cErr.message}`);
@@ -590,14 +590,6 @@ async function runMirrorSyncCycle() {
             nclientExactMap.set(cleanAlias, email);
             keywordInclusionList.push({ keyword: cleanAlias, email });
           }
-        }
-      }
-
-      if (c.casillero_codigo) {
-        const cleanCasillero = cleanExactString(c.casillero_codigo);
-        if (cleanCasillero && cleanCasillero !== 'AMEX' && !cleanCasillero.startsWith('AMX-')) {
-          iclientMap.set(cleanCasillero, email);
-          keywordInclusionList.push({ keyword: cleanCasillero, email });
         }
       }
     }

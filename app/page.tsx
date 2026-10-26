@@ -58,16 +58,12 @@ interface ClientePortalItem {
   id: string;
   nombre_completo: string;
   email: string;
-  telefono: string | null;
-  documento_identidad: string | null;
-  casillero_codigo: string | null;
   alias_palabras_clave: string[] | null;
   activo: boolean;
   password_establecido?: boolean;
   ultimo_acceso?: string | null;
   invitado_en?: string | null;
   creado_en: string;
-
 }
 
 const TIPOS_EMPAQUE = ['CAJA', 'SOBRE', 'BOLSA'];
@@ -136,7 +132,6 @@ export default function ClienteDashboardTIB() {
   // Estados para Editar Cliente / Configurar Palabras Clave y Matching
   const [editingClient, setEditingClient] = useState<ClientePortalItem | null>(null);
   const [editNombre, setEditNombre] = useState('');
-  const [editCasillero, setEditCasillero] = useState('');
   const [editKeywords, setEditKeywords] = useState('');
   const [isUpdatingClient, setIsUpdatingClient] = useState(false);
   const [editClientSuccess, setEditClientSuccess] = useState<string | null>(null);
@@ -646,7 +641,6 @@ export default function ClienteDashboardTIB() {
   const handleOpenEditClient = (c: ClientePortalItem) => {
     setEditingClient(c);
     setEditNombre(c.nombre_completo || '');
-    setEditCasillero(c.casillero_codigo || '');
     setEditKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave.join(', ') : '');
     setEditClientSuccess(null);
     setEditClientError(null);
@@ -672,7 +666,6 @@ export default function ClienteDashboardTIB() {
         body: JSON.stringify({
           id: editingClient.id,
           nombre_completo: editNombre,
-          casillero_codigo: editCasillero,
           alias_palabras_clave: keywordsArray,
         }),
       });
@@ -814,10 +807,7 @@ export default function ClienteDashboardTIB() {
     const q = clientSearchQuery.toLowerCase();
     return clientsList.filter(c => 
       c.nombre_completo.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      (c.casillero_codigo && c.casillero_codigo.toLowerCase().includes(q)) ||
-      (c.telefono && c.telefono.includes(q)) ||
-      (c.documento_identidad && c.documento_identidad.includes(q))
+      c.email.toLowerCase().includes(q)
     );
   }, [clientsList, clientSearchQuery]);
 
@@ -2577,7 +2567,6 @@ export default function ClienteDashboardTIB() {
                         <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
-                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Casillero</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
@@ -2587,14 +2576,14 @@ export default function ClienteDashboardTIB() {
                       <tbody>
                         {isLoadingClients ? (
                           <tr>
-                            <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
                               <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
                               <span>Cargando directorio de clientes...</span>
                             </td>
                           </tr>
                         ) : filteredClientsList.length === 0 ? (
                           <tr>
-                            <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
                               <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
                               <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
                               <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón "+ Agregar Cliente".</p>
@@ -2608,11 +2597,6 @@ export default function ClienteDashboardTIB() {
                               </td>
                               <td style={{ padding: '12px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
                                 {c.email}
-                              </td>
-                              <td style={{ padding: '12px 14px' }}>
-                                <span style={{ backgroundColor: '#f3f4f6', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, color: '#374151', fontFamily: 'monospace' }}>
-                                  {c.casillero_codigo || `AMX-${String(idx + 1).padStart(3, '0')}`}
-                                </span>
                               </td>
                               <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
                                 {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
@@ -3465,19 +3449,6 @@ export default function ClienteDashboardTIB() {
                   onChange={(e) => setEditKeywords(e.target.value)}
                   placeholder="Ej: MARTIN MALDONADO, AMEX KENNETH MALDONADO, KENNETH MALDONADO"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #7dd3fc', fontSize: '12.5px', outline: 'none', backgroundColor: '#ffffff', fontFamily: 'monospace' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
-                  Código Casillero
-                </label>
-                <input
-                  type="text"
-                  value={editCasillero}
-                  onChange={(e) => setEditCasillero(e.target.value)}
-                  placeholder="Ej: AMX-001 o 31888"
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
                 />
               </div>
 

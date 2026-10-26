@@ -10,7 +10,6 @@ export async function POST(req: Request) {
     const {
       nombre_completo,
       email,
-      casillero_codigo,
       alias_palabras_clave,
     } = body;
 
@@ -101,7 +100,6 @@ export async function POST(req: Request) {
       id: newUserId,
       nombre_completo: cleanNombre,
       email: cleanEmail,
-      casillero_codigo: casillero_codigo?.trim() || null,
       alias_palabras_clave: keywords,
       activo: true,
       actualizado_en: new Date().toISOString(),
@@ -133,7 +131,7 @@ export async function POST(req: Request) {
     let totalLinked = 0;
     try {
       const validKeywords: string[] = [];
-      const candidateList = [cleanNombre, casillero_codigo, ...keywords];
+      const candidateList = [cleanNombre, ...keywords];
       for (const item of candidateList) {
         const clean = cleanExactString(item);
         if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {

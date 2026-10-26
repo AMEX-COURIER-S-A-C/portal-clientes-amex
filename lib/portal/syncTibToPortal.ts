@@ -66,7 +66,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   // 2. Consultar todos los perfiles activos en clientes_portal
   const { data: allClients, error: cErr } = await portalAdmin
     .from('clientes_portal')
-    .select('id, email, nombre_completo, alias_palabras_clave, casillero_codigo')
+    .select('id, email, nombre_completo, alias_palabras_clave')
     .eq('activo', true);
 
   if (cErr) {
@@ -105,18 +105,6 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
         if (cleanAlias && cleanAlias.length >= 2 && cleanAlias !== 'AMEX') {
           searchTerms.add(cleanAlias);
         }
-      }
-    }
-
-    if (client.casillero_codigo) {
-      const cleanCasillero = cleanExactString(client.casillero_codigo);
-      if (
-        cleanCasillero &&
-        cleanCasillero.length >= 3 &&
-        cleanCasillero !== 'AMEX' &&
-        !cleanCasillero.startsWith('AMX-')
-      ) {
-        searchTerms.add(cleanCasillero);
       }
     }
 

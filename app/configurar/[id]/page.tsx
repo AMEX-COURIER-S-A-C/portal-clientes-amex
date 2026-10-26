@@ -41,7 +41,6 @@ export default function ConfigurarClientePage() {
   const [client, setClient] = useState<any | null>(null);
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [email, setEmail] = useState('');
-  const [casilleroCodigo, setCasilleroCodigo] = useState('');
   const [activo, setActivo] = useState(true);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
@@ -155,7 +154,6 @@ export default function ConfigurarClientePage() {
       setClient(c);
       setNombreCompleto(c.nombre_completo || '');
       setEmail(c.email || '');
-      setCasilleroCodigo(c.casillero_codigo || '');
       setActivo(c.activo !== false);
       setKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave : []);
       setPaquetesVinculados(data.paquetes_vinculados || 0);
@@ -224,7 +222,6 @@ export default function ConfigurarClientePage() {
         body: JSON.stringify({
           id: clientId,
           nombre_completo: nombreCompleto,
-          casillero_codigo: casilleroCodigo,
           alias_palabras_clave: keywords,
           activo: activo,
         }),
@@ -747,7 +744,7 @@ export default function ConfigurarClientePage() {
           </div>
 
           {/* SECCIÓN 2: INFORMACIÓN GENERAL DEL CLIENTE */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '18px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Consignatario / Nombre Completo
@@ -762,19 +759,6 @@ export default function ConfigurarClientePage() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Código de Casillero
-              </label>
-              <input
-                type="text"
-                value={casilleroCodigo}
-                onChange={(e) => setCasilleroCodigo(e.target.value)}
-                placeholder="Ej. AMX-001 o 31888"
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-              />
-            </div>
-
-            <div style={{ gridColumn: 'span 2' }}>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Correo de Acceso (Login)
               </label>

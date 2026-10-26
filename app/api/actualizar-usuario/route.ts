@@ -45,7 +45,6 @@ export async function PUT(req: Request) {
     const {
       id,
       nombre_completo,
-      casillero_codigo,
       alias_palabras_clave,
       activo,
     } = body;
@@ -108,7 +107,6 @@ export async function PUT(req: Request) {
       actualizado_en: new Date().toISOString(),
     };
 
-    if (casillero_codigo !== undefined) updatePayload.casillero_codigo = casillero_codigo ? String(casillero_codigo).trim() : null;
     if (activo !== undefined) updatePayload.activo = Boolean(activo);
 
     const { data: updatedClient, error: updateErr } = await portalAdmin
@@ -130,7 +128,7 @@ export async function PUT(req: Request) {
 
       // Recopilar palabras clave válidas (mínimo 2 caracteres, ignorar genéricos como 'AMEX')
       const validKeywords: string[] = [];
-      const candidateList = [cleanNombre, casillero_codigo, ...keywords];
+      const candidateList = [cleanNombre, ...keywords];
       
       for (const item of candidateList) {
         const clean = cleanExactString(item);
