@@ -67,7 +67,7 @@ export async function POST(req: Request) {
           q = q.ilike('tracking', `%${tracking.trim()}%`);
         }
         if (consignatario && typeof consignatario === 'string' && consignatario.trim()) {
-          q = q.ilike('nombre_consignatario', `%${consignatario.trim()}%`);
+          q = q.eq('nombre_consignatario', consignatario.trim());
         }
         if (tipo && typeof tipo === 'string' && tipo.trim()) {
           q = q.eq('tipo_empaque', tipo.trim());

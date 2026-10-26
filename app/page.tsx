@@ -97,6 +97,14 @@ export default function ClienteDashboardTIB() {
   const [filterTipo, setFilterTipo] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
 
+  // Estados para el Selector Desplegable Inteligente de Consignatario en la barra principal
+  const [isConsignatarioFilterOpen, setIsConsignatarioFilterOpen] = useState(false);
+  const [consignatarioSearchTerm, setConsignatarioSearchTerm] = useState('');
+  const [consignatarioOptions, setConsignatarioOptions] = useState<any[]>([]);
+  const [consignatarioOptionsTotal, setConsignatarioOptionsTotal] = useState(0);
+  const [isLoadingConsignatarioOptions, setIsLoadingConsignatarioOptions] = useState(false);
+  const consignatarioDropdownRef = React.useRef<HTMLDivElement>(null);
+
   // Filtros avanzados, rangos y fechas profesionales
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filterFechaTipo, setFilterFechaTipo] = useState<'creado_en' | 'actualizado_en'>('creado_en');
@@ -218,6 +226,34 @@ export default function ClienteDashboardTIB() {
     }
   }, []);
 
+  const latestFiltersRef = React.useRef({
+    wr: filterWr,
+    tracking: filterTracking,
+    consignatario: filterConsignatario,
+    tipo: filterTipo,
+    estado: filterEstado,
+    fechaTipo: filterFechaTipo,
+    fechaDesde: filterFechaDesde,
+    fechaHasta: filterFechaHasta,
+    pesoMin: filterPesoMin,
+    pesoMax: filterPesoMax,
+  });
+
+  useEffect(() => {
+    latestFiltersRef.current = {
+      wr: filterWr,
+      tracking: filterTracking,
+      consignatario: filterConsignatario,
+      tipo: filterTipo,
+      estado: filterEstado,
+      fechaTipo: filterFechaTipo,
+      fechaDesde: filterFechaDesde,
+      fechaHasta: filterFechaHasta,
+      pesoMin: filterPesoMin,
+      pesoMax: filterPesoMax,
+    };
+  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, filterFechaTipo, filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax]);
+
   const fetchPaquetes = useCallback(async (
     email?: string | null,
     page: number = 1,
@@ -237,16 +273,17 @@ export default function ClienteDashboardTIB() {
     if (!email) return;
     setIsLoading(true);
     try {
-      const activeWr = customFilters?.wr !== undefined ? customFilters.wr : filterWr;
-      const activeTracking = customFilters?.tracking !== undefined ? customFilters.tracking : filterTracking;
-      const activeConsignatario = customFilters?.consignatario !== undefined ? customFilters.consignatario : filterConsignatario;
-      const activeTipo = customFilters?.tipo !== undefined ? customFilters.tipo : filterTipo;
-      const activeEstado = customFilters?.estado !== undefined ? customFilters.estado : filterEstado;
-      const activeFechaTipo = customFilters?.fechaTipo !== undefined ? customFilters.fechaTipo : filterFechaTipo;
-      const activeFechaDesde = customFilters?.fechaDesde !== undefined ? customFilters.fechaDesde : filterFechaDesde;
-      const activeFechaHasta = customFilters?.fechaHasta !== undefined ? customFilters.fechaHasta : filterFechaHasta;
-      const activePesoMin = customFilters?.pesoMin !== undefined ? customFilters.pesoMin : filterPesoMin;
-      const activePesoMax = customFilters?.pesoMax !== undefined ? customFilters.pesoMax : filterPesoMax;
+      const current = latestFiltersRef.current;
+      const activeWr = customFilters?.wr !== undefined ? customFilters.wr : current.wr;
+      const activeTracking = customFilters?.tracking !== undefined ? customFilters.tracking : current.tracking;
+      const activeConsignatario = customFilters?.consignatario !== undefined ? customFilters.consignatario : current.consignatario;
+      const activeTipo = customFilters?.tipo !== undefined ? customFilters.tipo : current.tipo;
+      const activeEstado = customFilters?.estado !== undefined ? customFilters.estado : current.estado;
+      const activeFechaTipo = customFilters?.fechaTipo !== undefined ? customFilters.fechaTipo : current.fechaTipo;
+      const activeFechaDesde = customFilters?.fechaDesde !== undefined ? customFilters.fechaDesde : current.fechaDesde;
+      const activeFechaHasta = customFilters?.fechaHasta !== undefined ? customFilters.fechaHasta : current.fechaHasta;
+      const activePesoMin = customFilters?.pesoMin !== undefined ? customFilters.pesoMin : current.pesoMin;
+      const activePesoMax = customFilters?.pesoMax !== undefined ? customFilters.pesoMax : current.pesoMax;
 
       const res = await fetch('/api/paquetes-portal', {
         method: 'POST',
@@ -301,7 +338,48 @@ export default function ClienteDashboardTIB() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, filterFechaTipo, filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax, itemsPerPage]);
+  }, [itemsPerPage]);
+
+  // Cargar opciones para el Selector Desplegable Inteligente de Consignatario (según rol)
+  useEffect(() => {
+    if (!isConsignatarioFilterOpen || !user?.email) return;
+    let cancelled = false;
+    setIsLoadingConsignatarioOptions(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/listado-amex?email=${encodeURIComponent(user.email)}&search=${encodeURIComponent(consignatarioSearchTerm.trim())}&limit=40`
+        );
+        const json = await res.json();
+        if (!cancelled && res.ok) {
+          setConsignatarioOptions(json.clientes || []);
+          setConsignatarioOptionsTotal(json.total || 0);
+        }
+      } catch (err) {
+        console.warn('Error al cargar opciones de consignatarios:', err);
+      } finally {
+        if (!cancelled) setIsLoadingConsignatarioOptions(false);
+      }
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isConsignatarioFilterOpen, consignatarioSearchTerm, user?.email]);
+
+  // Cerrar el desplegable de Consignatario al hacer clic fuera
+  useEffect(() => {
+    if (!isConsignatarioFilterOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (consignatarioDropdownRef.current && !consignatarioDropdownRef.current.contains(e.target as Node)) {
+        setIsConsignatarioFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isConsignatarioFilterOpen]);
 
   // Cargar lista de clientes registrados en el portal
   const fetchClientsList = useCallback(async () => {
@@ -406,7 +484,7 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Búsqueda y filtrado automático con debounce (ignora el montaje inicial ya cargado)
+  // Búsqueda y filtrado automático con debounce (solo cuando se selecciona un consignatario o cambian los filtros)
   useEffect(() => {
     if (!user?.email) return;
     if (isInitialFilterMount.current) {
@@ -827,6 +905,8 @@ export default function ClienteDashboardTIB() {
     setFilterWr('');
     setFilterTracking('');
     setFilterConsignatario('');
+    setConsignatarioSearchTerm('');
+    setIsConsignatarioFilterOpen(false);
     setFilterTipo('');
     setFilterEstado('');
     setFilterFechaDesde('');
@@ -1162,31 +1242,335 @@ export default function ClienteDashboardTIB() {
                   />
                 </div>
 
-                {/* Input Consignatario */}
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
-                  <input
-                    type="text"
-                    value={filterConsignatario}
-                    onChange={(e) => {
-                      setFilterConsignatario(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearchClick(); }} placeholder="CONSIGNATARIO"
+                {/* Selector Desplegable Inteligente de Consignatario */}
+                <div ref={consignatarioDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsConsignatarioFilterOpen((prev) => !prev)}
                     style={{
                       width: '100%',
                       height: '42px',
-                      paddingLeft: '38px',
-                      paddingRight: '12px',
+                      paddingLeft: '36px',
+                      paddingRight: filterConsignatario ? '58px' : '34px',
                       borderRadius: '6px',
-                      border: '1px solid #d1d5db',
-                      fontSize: '13px',
-                      color: '#111827',
+                      border: isConsignatarioFilterOpen
+                        ? '1px solid #2563eb'
+                        : filterConsignatario
+                        ? '1px solid #3b82f6'
+                        : '1px solid #d1d5db',
+                      fontSize: '12.5px',
+                      fontWeight: filterConsignatario ? 700 : 500,
+                      color: filterConsignatario ? '#1e3a8a' : '#6b7280',
+                      backgroundColor: filterConsignatario ? '#eff6ff' : '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      textAlign: 'left',
                       outline: 'none',
-                      backgroundColor: '#ffffff',
-                      transition: 'border-color 0.15s ease'
+                      transition: 'all 0.15s ease',
+                      boxShadow: isConsignatarioFilterOpen ? '0 0 0 3px rgba(37, 99, 235, 0.12)' : 'none',
                     }}
-                  />
+                    title={filterConsignatario || 'Seleccionar consignatario de la lista'}
+                  >
+                    <Users
+                      style={{
+                        position: 'absolute',
+                        left: '11px',
+                        width: '16px',
+                        height: '16px',
+                        color: filterConsignatario ? '#2563eb' : '#9ca3af',
+                      }}
+                    />
+                    <span
+                      style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        display: 'block',
+                        width: '100%',
+                      }}
+                    >
+                      {filterConsignatario || 'CONSIGNATARIO (SELECCIONAR)'}
+                    </span>
+                    <ChevronDown
+                      style={{
+                        position: 'absolute',
+                        right: '11px',
+                        width: '16px',
+                        height: '16px',
+                        color: filterConsignatario ? '#2563eb' : '#6b7280',
+                        transform: isConsignatarioFilterOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.15s ease',
+                      }}
+                    />
+                  </button>
+
+                  {filterConsignatario && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilterConsignatario('');
+                        setCurrentPage(1);
+                      }}
+                      title="Quitar filtro de consignatario"
+                      style={{
+                        position: 'absolute',
+                        right: '30px',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        border: 'none',
+                        backgroundColor: '#dbeafe',
+                        color: '#1d4ed8',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      <X style={{ width: '12px', height: '12px' }} />
+                    </button>
+                  )}
+
+                  {isConsignatarioFilterOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '46px',
+                        left: 0,
+                        right: 0,
+                        minWidth: '310px',
+                        backgroundColor: '#ffffff',
+                        borderRadius: '10px',
+                        border: '1px solid #cbd5e1',
+                        boxShadow: '0 14px 32px rgba(15, 23, 42, 0.18)',
+                        zIndex: 80,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Cabecera y buscador interno del desplegable (NO consulta paquetes al escribir) */}
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          backgroundColor: '#f8fafc',
+                          borderBottom: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: '6px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              color: '#334155',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.4px',
+                            }}
+                          >
+                            {isSuperadmin ? 'Catálogo de Consignatarios' : 'Mis Consignatarios Asignados'}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              color: '#1d4ed8',
+                              backgroundColor: '#dbeafe',
+                              padding: '2px 7px',
+                              borderRadius: '999px',
+                            }}
+                          >
+                            {consignatarioOptionsTotal.toLocaleString()} disp.
+                          </span>
+                        </div>
+
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <Search
+                            style={{
+                              position: 'absolute',
+                              left: '10px',
+                              width: '14px',
+                              height: '14px',
+                              color: '#64748b',
+                            }}
+                          />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={consignatarioSearchTerm}
+                            onChange={(e) => setConsignatarioSearchTerm(e.target.value)}
+                            placeholder="Filtrar nombre en esta lista..."
+                            style={{
+                              width: '100%',
+                              height: '34px',
+                              paddingLeft: '30px',
+                              paddingRight: consignatarioSearchTerm ? '28px' : '10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12px',
+                              color: '#0f172a',
+                              backgroundColor: '#ffffff',
+                              outline: 'none',
+                            }}
+                          />
+                          {consignatarioSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setConsignatarioSearchTerm('')}
+                              style={{
+                                position: 'absolute',
+                                right: '8px',
+                                background: 'none',
+                                border: 'none',
+                                color: '#64748b',
+                                cursor: 'pointer',
+                                padding: 0,
+                                display: 'inline-flex',
+                              }}
+                            >
+                              <X style={{ width: '13px', height: '13px' }} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Lista de opciones para seleccionar con 1 clic */}
+                      <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                        {/* Opción: Todos los consignatarios */}
+                        <div
+                          onClick={() => {
+                            setFilterConsignatario('');
+                            setCurrentPage(1);
+                            setIsConsignatarioFilterOpen(false);
+                          }}
+                          style={{
+                            padding: '9px 12px',
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: !filterConsignatario ? '#eff6ff' : '#ffffff',
+                            fontWeight: !filterConsignatario ? 700 : 600,
+                            fontSize: '12px',
+                            color: !filterConsignatario ? '#1d4ed8' : '#334155',
+                          }}
+                        >
+                          <span>📋 Todos los consignatarios (Ver todo)</span>
+                          {!filterConsignatario && (
+                            <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 800 }}>✓ Activo</span>
+                          )}
+                        </div>
+
+                        {isLoadingConsignatarioOptions ? (
+                          <div
+                            style={{
+                              padding: '18px 12px',
+                              textAlign: 'center',
+                              fontSize: '12px',
+                              color: '#64748b',
+                            }}
+                          >
+                            Cargando consignatarios...
+                          </div>
+                        ) : consignatarioOptions.length === 0 ? (
+                          <div
+                            style={{
+                              padding: '18px 12px',
+                              textAlign: 'center',
+                              fontSize: '12px',
+                              color: '#64748b',
+                            }}
+                          >
+                            No se encontraron consignatarios con ese nombre.
+                          </div>
+                        ) : (
+                          consignatarioOptions.map((item) => {
+                            const isSelected = filterConsignatario === item.nombre;
+                            return (
+                              <div
+                                key={item.id || item.nombre}
+                                onClick={() => {
+                                  setFilterConsignatario(item.nombre);
+                                  setCurrentPage(1);
+                                  setIsConsignatarioFilterOpen(false);
+                                }}
+                                style={{
+                                  padding: '9px 12px',
+                                  borderBottom: '1px solid #f8fafc',
+                                  cursor: 'pointer',
+                                  backgroundColor: isSelected ? '#dbeafe' : '#ffffff',
+                                  transition: 'background-color 0.1s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) e.currentTarget.style.backgroundColor = '#f1f5f9';
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isSelected) e.currentTarget.style.backgroundColor = '#ffffff';
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: '12px',
+                                      fontWeight: 700,
+                                      color: isSelected ? '#1e3a8a' : '#0f172a',
+                                      wordBreak: 'break-word',
+                                    }}
+                                  >
+                                    {item.nombre}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      color: '#0369a1',
+                                      backgroundColor: '#e0f2fe',
+                                      padding: '2px 7px',
+                                      borderRadius: '999px',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {Number(item.total_paquetes || 0).toLocaleString()} paq.
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: '10.5px',
+                                    color: '#64748b',
+                                    marginTop: '3px',
+                                    display: 'flex',
+                                    gap: '8px',
+                                  }}
+                                >
+                                  <span>Recibidos: {item.recibidos || 0}</span>
+                                  <span>•</span>
+                                  <span>Enviados: {item.enviados || 0}</span>
+                                  <span>•</span>
+                                  <span>Entregados: {item.entregados || 0}</span>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
