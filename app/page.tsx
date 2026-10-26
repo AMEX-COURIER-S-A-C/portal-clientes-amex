@@ -197,20 +197,21 @@ export default function ClienteDashboardTIB() {
     };
   }, []);
 
-  // Cargar conteo total absoluto del sistema (sin filtros)
+  // Cargar conteo total absoluto del sistema (sin filtros) vía servidor optimizado
   const fetchTotalSystemCount = useCallback(async (email?: string | null) => {
     if (!email) return;
     try {
-      let query = supabasePortal
-        .from('paquetes_portal')
-        .select('id', { count: 'exact', head: true });
-
-      if (email.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
-        query = query.eq('usuario_email', email);
-      }
-      const { count, error } = await query;
-      if (!error && count != null) {
-        setTotalSystemCount(count);
+      const res = await fetch('/api/paquetes-portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, onlySystemCount: true }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (typeof json.systemCount === 'number') {
+          setTotalSystemCount(json.systemCount);
+          return;
+        }
       }
     } catch (e) {
       console.warn('Error fetching total system count:', e);
@@ -236,29 +237,6 @@ export default function ClienteDashboardTIB() {
     if (!email) return;
     setIsLoading(true);
     try {
-      let query = supabasePortal
-        .from('paquetes_portal')
-        .select(`
-          id, 
-          numero_recibo_bodega, 
-          tracking, 
-          nombre_consignatario,
-          tipo_empaque,
-          peso_kg, 
-          estado_tib, 
-          estado_amex, 
-          estado_visible,
-          tib_imagen_url, 
-          tib_ticket_pdf_url,
-          creado_en, 
-          actualizado_en
-        `, { count: 'exact' });
-
-      // Si es cliente regular, filtrar solo los suyos; si es superadmin AMEX, permitir ver todo para supervisión
-      if (email.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
-        query = query.eq('usuario_email', email);
-      }
-
       const activeWr = customFilters?.wr !== undefined ? customFilters.wr : filterWr;
       const activeTracking = customFilters?.tracking !== undefined ? customFilters.tracking : filterTracking;
       const activeConsignatario = customFilters?.consignatario !== undefined ? customFilters.consignatario : filterConsignatario;
@@ -270,54 +248,37 @@ export default function ClienteDashboardTIB() {
       const activePesoMin = customFilters?.pesoMin !== undefined ? customFilters.pesoMin : filterPesoMin;
       const activePesoMax = customFilters?.pesoMax !== undefined ? customFilters.pesoMax : filterPesoMax;
 
-      if (activeWr.trim()) {
-        query = query.ilike('numero_recibo_bodega', `%${activeWr.trim()}%`);
-      }
-      if (activeTracking.trim()) {
-        query = query.ilike('tracking', `%${activeTracking.trim()}%`);
-      }
-      if (activeConsignatario.trim()) {
-        query = query.ilike('nombre_consignatario', `%${activeConsignatario.trim()}%`);
-      }
-      if (activeTipo.trim()) {
-        query = query.eq('tipo_empaque', activeTipo.trim());
-      }
-      if (activeEstado.trim()) {
-        query = query.eq('estado_visible', activeEstado.trim());
-      }
-      if (activeFechaDesde.trim()) {
-        try {
-          const d = new Date(`${activeFechaDesde.trim()}T00:00:00`);
-          if (!isNaN(d.getTime())) {
-            query = query.gte(activeFechaTipo || 'creado_en', d.toISOString());
-          }
-        } catch (_) {}
-      }
-      if (activeFechaHasta.trim()) {
-        try {
-          const d = new Date(`${activeFechaHasta.trim()}T23:59:59.999`);
-          if (!isNaN(d.getTime())) {
-            query = query.lte(activeFechaTipo || 'creado_en', d.toISOString());
-          }
-        } catch (_) {}
-      }
-      if (activePesoMin.trim() && !isNaN(Number(activePesoMin))) {
-        query = query.gte('peso_kg', Number(activePesoMin));
-      }
-      if (activePesoMax.trim() && !isNaN(Number(activePesoMax))) {
-        query = query.lte('peso_kg', Number(activePesoMax));
+      const res = await fetch('/api/paquetes-portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          page,
+          itemsPerPage,
+          filters: {
+            wr: activeWr,
+            tracking: activeTracking,
+            consignatario: activeConsignatario,
+            tipo: activeTipo,
+            estado: activeEstado,
+            fechaTipo: activeFechaTipo,
+            fechaDesde: activeFechaDesde,
+            fechaHasta: activeFechaHasta,
+            pesoMin: activePesoMin,
+            pesoMax: activePesoMax,
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Error al consultar paquetes');
       }
 
-      const from = (page - 1) * itemsPerPage;
-      const to = from + itemsPerPage - 1;
+      const data = json.paquetes || [];
+      setPaquetes(data);
 
-      query = query.order('creado_en', { ascending: false }).range(from, to);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-      setPaquetes(data || []);
-
-      const countNum = count ?? (data?.length || 0);
+      const countNum = json.count ?? data.length;
       setTotalFilteredCount(countNum);
 
       const hasFilters = Boolean(
