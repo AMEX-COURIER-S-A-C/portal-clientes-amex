@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Mail,
   Lock,
+  KeyRound,
   Phone,
   FileText,
   Tag,
@@ -529,37 +530,39 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Reenviar enlace de activación y contraseña al cliente
-  const handleResendActivation = async (clientEmail: string) => {
+  // Restablecer contraseña y enviar correo automático al cliente
+  const handleResetPassword = async (clientEmail: string) => {
     if (resendingEmail) return;
     setResendingEmail(clientEmail);
     setResendNotice(null);
 
     try {
-      const res = await fetch('/api/reenviar-activacion', {
+      const res = await fetch('/api/restablecer-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: clientEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Error al reenviar enlace');
+        throw new Error(data.error || 'Error al enviar enlace de restablecimiento');
       }
       setResendNotice({
         type: 'success',
-        message: data.message || `Enlace de activación reenviado a ${clientEmail}`,
+        message: data.message || `Correo enviado exitosamente a ${clientEmail} con el enlace seguro para restablecer su contraseña.`,
       });
-      setTimeout(() => setResendNotice(null), 5000);
+      setTimeout(() => setResendNotice(null), 6000);
     } catch (err: any) {
       setResendNotice({
         type: 'error',
-        message: err.message || 'Error al reenviar enlace de activación',
+        message: err.message || 'Error al enviar correo para restablecer contraseña',
       });
-      setTimeout(() => setResendNotice(null), 5000);
+      setTimeout(() => setResendNotice(null), 6000);
     } finally {
       setResendingEmail(null);
     }
   };
+
+  const handleResendActivation = handleResetPassword;
 
   // Abrir modal de edición de cliente y configuración de matching
   const handleOpenEditClient = (c: ClientePortalItem) => {
@@ -2120,6 +2123,48 @@ export default function ClienteDashboardTIB() {
               {/* Contenido Sub-Pestaña 1: Usuarios Creados */}
               {configSubTab === 'usuarios' && (
                 <div>
+                  {/* Notificación de Restablecimiento de Contraseña */}
+                  {resendNotice && (
+                    <div style={{
+                      marginBottom: '14px',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      backgroundColor: resendNotice.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                      border: `1px solid ${resendNotice.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+                      color: resendNotice.type === 'success' ? '#065f46' : '#991b1b',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                    }}>
+                      {resendNotice.type === 'success' ? (
+                        <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981', flexShrink: 0 }} />
+                      ) : (
+                        <AlertCircle style={{ width: '18px', height: '18px', color: '#ef4444', flexShrink: 0 }} />
+                      )}
+                      <div style={{ flex: 1 }}>{resendNotice.message}</div>
+                      <button
+                        type="button"
+                        onClick={() => setResendNotice(null)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'inherit',
+                          cursor: 'pointer',
+                          fontSize: '18px',
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          padding: '0 4px',
+                        }}
+                        title="Cerrar notificación"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
                       <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -2152,7 +2197,7 @@ export default function ClienteDashboardTIB() {
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
-                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center' }}>Acciones</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center', minWidth: '260px' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2214,30 +2259,39 @@ export default function ClienteDashboardTIB() {
                                 {formatDateTimeTIB(c.creado_en).date}
                               </td>
                               <td style={{ padding: '8px 14px', textAlign: 'center' }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
                                   <button
                                     type="button"
-                                    onClick={() => handleResendActivation(c.email)}
+                                    onClick={() => handleResetPassword(c.email)}
                                     disabled={resendingEmail === c.email}
-                                    title="Reenviar enlace de activación por correo"
+                                    title={`Enviar correo automático a ${c.email} para restablecer o recuperar su contraseña`}
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '4px',
-                                      padding: '6px 10px',
-                                      backgroundColor: '#f8fafc',
-                                      border: '1px solid #cbd5e1',
+                                      gap: '5px',
+                                      padding: '6px 12px',
+                                      backgroundColor: resendingEmail === c.email ? '#f3f4f6' : '#fff7ed',
+                                      border: `1px solid ${resendingEmail === c.email ? '#e5e7eb' : '#fed7aa'}`,
                                       borderRadius: '6px',
-                                      color: '#1e293b',
+                                      color: resendingEmail === c.email ? '#9ca3af' : '#c2410c',
                                       fontSize: '11px',
                                       fontWeight: 700,
                                       cursor: resendingEmail === c.email ? 'not-allowed' : 'pointer',
-                                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                                       transition: 'all 0.15s ease',
                                     }}
                                   >
-                                    <Mail style={{ width: '12px', height: '12px', color: '#0284c7' }} />
-                                    <span>{resendingEmail === c.email ? 'Enviando...' : 'Reenviar Enlace'}</span>
+                                    {resendingEmail === c.email ? (
+                                      <>
+                                        <div style={{ width: '11px', height: '11px', border: '2px solid #ea580c', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                        <span>Enviando correo...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <KeyRound style={{ width: '12px', height: '12px', color: '#ea580c' }} />
+                                        <span>Restablecer Contraseña</span>
+                                      </>
+                                    )}
                                   </button>
 
                                   <Link

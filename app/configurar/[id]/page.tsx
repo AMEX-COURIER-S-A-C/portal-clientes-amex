@@ -22,6 +22,7 @@ import {
   Phone,
   FileText,
   Lock,
+  KeyRound,
 } from 'lucide-react';
 
 export default function ConfigurarClientePage() {
@@ -54,13 +55,13 @@ export default function ConfigurarClientePage() {
     setIsResending(true);
     setResendMsg(null);
     try {
-      const res = await fetch('/api/reenviar-activacion', {
+      const res = await fetch('/api/restablecer-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al reenviar enlace');
+      if (!res.ok) throw new Error(data.error || 'Error al enviar enlace');
       setResendMsg({ type: 'success', text: data.message || `Enlace enviado exitosamente a ${email}` });
     } catch (err: any) {
       setResendMsg({ type: 'error', text: err.message || 'Error al reenviar enlace' });
@@ -555,22 +556,24 @@ export default function ConfigurarClientePage() {
                   type="button"
                   onClick={handleResendActivation}
                   disabled={isResending}
+                  title="Enviar correo para restablecer contraseña a esta cuenta"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '5px',
-                    padding: '4px 10px',
-                    backgroundColor: '#f0fdf4',
-                    border: '1px solid #bbf7d0',
+                    padding: '5px 12px',
+                    backgroundColor: '#fff7ed',
+                    border: '1px solid #fed7aa',
                     borderRadius: '6px',
-                    color: '#166534',
+                    color: '#c2410c',
                     fontSize: '11.5px',
                     fontWeight: 700,
                     cursor: isResending ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
                   }}
                 >
-                  <Mail style={{ width: '12px', height: '12px' }} />
-                  <span>{isResending ? 'Enviando enlace...' : 'Reenviar Enlace de Activación'}</span>
+                  <KeyRound style={{ width: '12px', height: '12px', color: '#ea580c' }} />
+                  <span>{isResending ? 'Enviando enlace...' : 'Enviar Enlace para Restablecer Contraseña'}</span>
                 </button>
               </div>
               {resendMsg && (

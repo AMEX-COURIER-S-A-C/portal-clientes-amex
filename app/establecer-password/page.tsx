@@ -211,7 +211,7 @@ export default function EstablecerPasswordPage() {
             }}
           >
             <ShieldCheck style={{ width: '13px', height: '13px' }} />
-            <span>Portal de Clientes • Activación</span>
+            <span>Portal de Clientes • Seguridad de Acceso</span>
           </div>
           <h1
             style={{
@@ -222,12 +222,12 @@ export default function EstablecerPasswordPage() {
               letterSpacing: '-0.3px',
             }}
           >
-            {isSuccess ? '¡Cuenta Activada!' : 'Crea tu Contraseña'}
+            {isSuccess ? '¡Contraseña Configurada!' : 'Restablece o Crea tu Contraseña'}
           </h1>
           <p style={{ margin: 0, fontSize: '13px', color: '#cbd5e1' }}>
             {isSuccess
-              ? 'Tu clave personal ha sido configurada con éxito.'
-              : 'Define tu clave personal de acceso para ingresar a tu casillero.'}
+              ? 'Tu contraseña ha sido guardada con éxito. Ya puedes ingresar al portal.'
+              : 'Define tu nueva clave personal de acceso para ingresar a tu casillero.'}
           </p>
         </div>
 
