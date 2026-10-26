@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 const PORTAL_URL =
   process.env.NEXT_PUBLIC_PORTAL_SUPABASE_URL ||
@@ -46,8 +47,8 @@ export async function POST(req: NextRequest) {
       password,
     });
 
-    // 2. Si falla y es la cuenta superadmin de AMEX, sincronizar con la base maestra de ERP
-    if (portalError && cleanEmail === 'sistemaamexcourier@gmail.com') {
+    // 2. Si falla y es una cuenta superadmin de AMEX, sincronizar con la base maestra de ERP
+    if (portalError && isSuperadminEmail(cleanEmail)) {
       try {
         const masterClient = createClient(MASTER_URL, MASTER_ANON_KEY, {
           auth: { persistSession: false, autoRefreshToken: false },
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar si la cuenta ha sido desactivada por administración
-    if (cleanEmail !== 'sistemaamexcourier@gmail.com') {
+    if (!isSuperadminEmail(cleanEmail)) {
       const portalAdmin = getPortalAdmin();
       const { data: clientProfile } = await portalAdmin
         .from('clientes_portal')

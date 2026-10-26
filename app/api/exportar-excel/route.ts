@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import writeXlsxFile from 'write-excel-file/node';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Usuario no autenticado' }, { status: 401 });
     }
 
-    const isSuperadmin = email.toLowerCase() === 'sistemaamexcourier@gmail.com';
+    const isSuperadmin = isSuperadminEmail(email);
     const portalAdmin = getPortalAdmin();
 
     // Función constructora de consulta base para paginar de a 1,000 registros

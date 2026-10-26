@@ -1,4 +1,7 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
+
+export { ADMIN_MASTER_EMAIL };
 
 export interface RawTibItem {
   seqwr?: string;
@@ -38,8 +41,6 @@ export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: s
   return normTib || 'RECIBIDO';
 }
 
-export const ADMIN_MASTER_EMAIL = 'sistemaamexcourier@gmail.com';
-
 /**
  * Motor de Re-vinculación Ultrarrápida en Supabase (< 1 segundo).
  * 
@@ -54,7 +55,7 @@ export const ADMIN_MASTER_EMAIL = 'sistemaamexcourier@gmail.com';
 export async function syncTibPackagesToPortal(options?: { specificEmail?: string }) {
   const portalAdmin = getPortalAdmin();
   const specificTarget = options?.specificEmail?.trim().toLowerCase() || null;
-  const isSpecificRegularClient = Boolean(specificTarget && specificTarget !== ADMIN_MASTER_EMAIL);
+  const isSpecificRegularClient = Boolean(specificTarget && !isSuperadminEmail(specificTarget));
 
   // 1. Detectar dinámicamente si la columna híbrida `usuario_id` ya fue creada en paquetes_portal
   const { error: colCheckErr } = await portalAdmin
@@ -80,10 +81,10 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   );
   const superadminId = superadminProfile?.id || null;
 
-  // 3. Determinar qué clientes regulares procesar
+  // 3. Determinar qué clientes regulares procesar (excluyendo todas las cuentas Superadmin)
   const regularClientsToProcess = clientesList.filter((c) => {
     const email = c.email?.trim().toLowerCase();
-    if (!email || email === ADMIN_MASTER_EMAIL) return false;
+    if (!email || isSuperadminEmail(email)) return false;
     if (isSpecificRegularClient) return email === specificTarget;
     return true;
   });

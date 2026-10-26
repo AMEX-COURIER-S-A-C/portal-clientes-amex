@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +26,13 @@ export async function POST(req: Request) {
 
     if (fetchErr || !client) {
       return NextResponse.json({ error: 'Cliente no encontrado en el portal.' }, { status: 404 });
+    }
+
+    if (isSuperadminEmail(client.email) && activo === false) {
+      return NextResponse.json(
+        { error: 'Las cuentas Superadmin están protegidas y no pueden ser desactivadas.' },
+        { status: 403 }
+      );
     }
 
     // 2. Actualizar estado activo en clientes_portal

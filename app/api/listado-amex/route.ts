@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
     const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10), 0);
 
     const supabase = getPortalAdmin();
-    const isRegularClient = Boolean(email && email !== 'sistemaamexcourier@gmail.com');
+    const isRegularClient = Boolean(email && !isSuperadminEmail(email));
 
     // Si es un cliente regular, devolver únicamente sus propios consignatarios asignados y sus conteos reales
     if (isRegularClient) {

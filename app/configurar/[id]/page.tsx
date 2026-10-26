@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import {
   ArrowLeft,
   Settings,
@@ -130,7 +131,7 @@ export default function ConfigurarClientePage() {
         router.push('/login');
         return;
       }
-      if (session.user.email?.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
+      if (!isSuperadminEmail(session.user.email)) {
         router.push('/');
         return;
       }
@@ -848,7 +849,9 @@ export default function ConfigurarClientePage() {
 
               <button
                 type="button"
-                onClick={() => setActivo(!activo)}
+                onClick={() => { if (!isSuperadminEmail(email)) setActivo(!activo); }}
+                disabled={isSuperadminEmail(email)}
+                title={isSuperadminEmail(email) ? 'Las cuentas Superadmin están protegidas y no pueden ser desactivadas' : undefined}
                 style={{
                   padding: '6px 14px',
                   borderRadius: '6px',

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export async function POST(req: Request) {
   try {
     const { email } = await req.json().catch(() => ({ email: null }));
 
     // Seguridad: solo el superadmin puede sincronizar en lote
-    if (email?.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
+    if (!isSuperadminEmail(email)) {
       return NextResponse.json({ error: 'Acceso no autorizado' }, { status: 403 });
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
+import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export async function GET(req: Request) {
   try {
@@ -27,10 +28,15 @@ export async function GET(req: Request) {
     }
 
     // Contar cuántos paquetes tiene actualmente en paquetes_portal
-    const { count: paquetesCount } = await portalAdmin
+    let countQuery = portalAdmin
       .from('paquetes_portal')
-      .select('*', { count: 'exact', head: true })
-      .eq('usuario_email', client.email.toLowerCase());
+      .select('*', { count: 'exact', head: true });
+
+    if (!isSuperadminEmail(client.email)) {
+      countQuery = countQuery.eq('usuario_email', client.email.toLowerCase());
+    }
+
+    const { count: paquetesCount } = await countQuery;
 
     return NextResponse.json({ client, paquetes_vinculados: paquetesCount || 0 });
   } catch (err: unknown) {
@@ -71,6 +77,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Cliente no encontrado en el portal.' }, { status: 404 });
     }
 
+    const isSuperadminTarget = isSuperadminEmail(existingClient.email);
     const cleanNombre = nombre_completo ? String(nombre_completo).trim().toUpperCase() : existingClient.nombre_completo;
 
     // Normalizar lista de palabras clave (alias): usar ÚNICAMENTE lo que el usuario guardó
@@ -96,18 +103,22 @@ export async function PUT(req: Request) {
     }
 
     // Solo si no hay ninguna palabra clave definida, respaldar con el nombre
-    if (keywords.length === 0 && cleanNombre) {
+    if (keywords.length === 0 && cleanNombre && !isSuperadminTarget) {
       keywords.push(cleanNombre);
     }
 
-    // 2. Actualizar registro en public.clientes_portal
+    // 2. Actualizar registro en public.clientes_portal (protegiendo estado activo de Superadmin)
     const updatePayload: Record<string, any> = {
       nombre_completo: cleanNombre,
       alias_palabras_clave: keywords,
       actualizado_en: new Date().toISOString(),
     };
 
-    if (activo !== undefined) updatePayload.activo = Boolean(activo);
+    if (isSuperadminTarget) {
+      updatePayload.activo = true;
+    } else if (activo !== undefined) {
+      updatePayload.activo = Boolean(activo);
+    }
 
     const { data: updatedClient, error: updateErr } = await portalAdmin
       .from('clientes_portal')
@@ -121,55 +132,62 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Error al actualizar datos en base de datos.' }, { status: 500 });
     }
 
-    // 3. Re-vincular paquetes inteligente en paquetes_portal
+    // 3. Re-vincular paquetes inteligente en paquetes_portal (solo para clientes regulares)
     let totalLinked = 0;
     try {
       const clientEmail = existingClient.email.toLowerCase();
 
-      // Recopilar palabras clave válidas (mínimo 2 caracteres, ignorar genéricos como 'AMEX')
-      const validKeywords: string[] = [];
-      const candidateList = [cleanNombre, ...keywords];
-      
-      for (const item of candidateList) {
-        const clean = cleanExactString(item);
-        if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
-          validKeywords.push(clean);
+      if (!isSuperadminTarget) {
+        // Recopilar palabras clave válidas (mínimo 2 caracteres, ignorar genéricos como 'AMEX')
+        const validKeywords: string[] = [];
+        const candidateList = [cleanNombre, ...keywords];
+        
+        for (const item of candidateList) {
+          const clean = cleanExactString(item);
+          if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
+            validKeywords.push(clean);
+          }
         }
+
+        // Revertir primero los paquetes asignados previamente a este cliente al email del superadmin
+        await portalAdmin
+          .from('paquetes_portal')
+          .update({ usuario_email: ADMIN_MASTER_EMAIL })
+          .eq('usuario_email', clientEmail);
+
+        // Vincular todos los paquetes que contengan o coincidan con cualquiera de las palabras clave
+        if (validKeywords.length > 0) {
+          for (const kw of validKeywords) {
+            await portalAdmin
+              .from('paquetes_portal')
+              .update({
+                usuario_email: clientEmail,
+                actualizado_en: new Date().toISOString(),
+              })
+              .ilike('nombre_consignatario', `%${kw}%`);
+          }
+
+          // Consultar también la API de TIB en vivo para garantizar que cualquier paquete histórico o reciente sea importado
+          try {
+            await syncTibPackagesToPortal({ specificEmail: clientEmail });
+          } catch (tibErr) {
+            console.warn('[ActualizarCliente] Aviso al sincronizar TIB API:', tibErr);
+          }
+        }
+
+        // Contar el total de paquetes ahora vinculados a este cliente
+        const { count: finalCount } = await portalAdmin
+          .from('paquetes_portal')
+          .select('id', { count: 'exact', head: true })
+          .eq('usuario_email', clientEmail);
+
+        totalLinked = finalCount || 0;
+      } else {
+        const { count: allCount } = await portalAdmin
+          .from('paquetes_portal')
+          .select('id', { count: 'exact', head: true });
+        totalLinked = allCount || 0;
       }
-
-      // Revertir primero los paquetes asignados previamente a este cliente al email del superadmin
-      await portalAdmin
-        .from('paquetes_portal')
-        .update({ usuario_email: 'sistemaamexcourier@gmail.com' })
-        .eq('usuario_email', clientEmail);
-
-      // Vincular todos los paquetes que contengan o coincidan con cualquiera de las palabras clave
-      if (validKeywords.length > 0) {
-        for (const kw of validKeywords) {
-          await portalAdmin
-            .from('paquetes_portal')
-            .update({
-              usuario_email: clientEmail,
-              actualizado_en: new Date().toISOString(),
-            })
-            .ilike('nombre_consignatario', `%${kw}%`);
-        }
-
-        // Consultar también la API de TIB en vivo para garantizar que cualquier paquete histórico o reciente sea importado
-        try {
-          await syncTibPackagesToPortal({ specificEmail: clientEmail });
-        } catch (tibErr) {
-          console.warn('[ActualizarCliente] Aviso al sincronizar TIB API:', tibErr);
-        }
-      }
-
-      // Contar el total de paquetes ahora vinculados a este cliente
-      const { count: finalCount } = await portalAdmin
-        .from('paquetes_portal')
-        .select('id', { count: 'exact', head: true })
-        .eq('usuario_email', clientEmail);
-
-      totalLinked = finalCount || 0;
     } catch (relinkErr) {
       console.error('[ActualizarCliente] Error al revincular paquetes:', relinkErr);
     }

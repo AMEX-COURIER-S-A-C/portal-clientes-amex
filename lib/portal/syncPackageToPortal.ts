@@ -1,4 +1,5 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export interface PaqueteSyncData {
   id?: string;
@@ -46,7 +47,7 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
     console.error('[PortalSync] Error al obtener clientes_portal:', cErr);
   }
 
-  const clientesList = clientes || [];
+  const clientesList = (clientes || []).filter((c) => !isSuperadminEmail(c.email));
 
   // Función para encontrar el email del cliente por coincidencia de nombre
   const findClientEmail = (consignatario: string, explicitEmail?: string | null): string | null => {
@@ -74,7 +75,7 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
     }
 
     // Si no coincide con ningún cliente registrado, se asigna por defecto al Superadmin Master
-    return 'sistemaamexcourier@gmail.com';
+    return ADMIN_MASTER_EMAIL;
   };
 
   const recordsToUpsert = [];

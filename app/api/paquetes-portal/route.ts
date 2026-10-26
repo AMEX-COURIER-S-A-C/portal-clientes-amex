@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const isSuperadmin = cleanEmail === 'sistemaamexcourier@gmail.com';
+    const isSuperadmin = isSuperadminEmail(cleanEmail);
     const portalAdmin = getPortalAdmin();
 
     // Si solo se solicita el conteo total del sistema/cliente (sin filtros)

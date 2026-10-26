@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import ExcelExportDropdown from '@/components/ExcelExportDropdown';
 import { 
   Search, 
@@ -74,7 +75,7 @@ export default function ClienteDashboardTIB() {
 
   const [user, setUser] = useState<any | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
-  const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
+  const isSuperadmin = isSuperadminEmail(user?.email);
   const [paquetes, setPaquetes] = useState<PaqueteTIB[]>([]);
   const [totalSystemCount, setTotalSystemCount] = useState<number>(0);
   const [totalFilteredCount, setTotalFilteredCount] = useState<number>(0);
@@ -431,7 +432,7 @@ export default function ClienteDashboardTIB() {
       setIsAuthChecking(false);
       fetchTotalSystemCount(session.user.email);
       fetchPaquetes(session.user.email, 1);
-      if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+      if (isSuperadminEmail(session.user.email)) {
         fetchClientsList();
       }
     }
@@ -450,7 +451,7 @@ export default function ClienteDashboardTIB() {
           if (!prev || prev.id !== session.user.id) {
             fetchTotalSystemCount(session.user.email);
             fetchPaquetes(session.user.email, 1);
-            if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+            if (isSuperadminEmail(session.user.email)) {
               fetchClientsList();
             }
           }
@@ -474,7 +475,7 @@ export default function ClienteDashboardTIB() {
     setIsRefreshing(true);
     fetchTotalSystemCount(user?.email);
     fetchPaquetes(user?.email, currentPage);
-    if (user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+    if (isSuperadminEmail(user?.email)) {
       fetchClientsList();
     }
   };
@@ -2593,13 +2594,25 @@ export default function ClienteDashboardTIB() {
                           filteredClientsList.map((c, idx) => (
                             <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
                               <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
-                                {c.nombre_completo}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span>{c.nombre_completo}</span>
+                                  {isSuperadminEmail(c.email) && (
+                                    <span style={{ backgroundColor: '#ff5722', color: '#ffffff', padding: '1px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                      Superadmin
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td style={{ padding: '12px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
                                 {c.email}
                               </td>
                               <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
-                                {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
+                                {isSuperadminEmail(c.email) ? (
+                                  <span style={{ backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', padding: '2px 7px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <ShieldCheck style={{ width: '11px', height: '11px', color: '#ea580c' }} />
+                                    <span>Acceso Global (Todos los paquetes)</span>
+                                  </span>
+                                ) : Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                     {c.alias_palabras_clave.map((k, ki) => (
                                       <span key={ki} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 600 }}>
@@ -2670,7 +2683,28 @@ export default function ClienteDashboardTIB() {
                                   </button>
 
                                   {/* Botón 2: Activar o Desactivar Cuenta */}
-                                  {c.activo === false ? (
+                                    {isSuperadminEmail(c.email) ? (
+                                      <span
+                                        title="Las cuentas Superadmin están protegidas y no pueden ser desactivadas"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '6px 10px',
+                                          backgroundColor: '#f8fafc',
+                                          border: '1px solid #cbd5e1',
+                                          borderRadius: '6px',
+                                          color: '#64748b',
+                                          fontSize: '11px',
+                                          fontWeight: 700,
+                                          cursor: 'not-allowed',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        <ShieldCheck style={{ width: '12px', height: '12px', color: '#0284c7' }} />
+                                        <span>Protegido</span>
+                                      </span>
+                                    ) : c.activo === false ? (
                                     <button
                                       type="button"
                                       onClick={() => handleToggleClientActive(c.id, true)}

@@ -3,6 +3,7 @@ import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
 import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export async function POST(req: Request) {
   try {
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanNombre = nombre_completo.trim().toUpperCase();
+    const isSuperadmin = isSuperadminEmail(cleanEmail);
 
     // Palabras clave para matching: guardar ÚNICAMENTE lo seleccionado/ingresado
     let keywords: string[] = [];
@@ -35,8 +37,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // Solo si no se especificó ninguna palabra clave, usar el nombre del formulario como respaldo
-    if (keywords.length === 0 && cleanNombre) {
+    // Solo si no se especificó ninguna palabra clave y es cliente regular, usar el nombre del formulario como respaldo
+    if (keywords.length === 0 && cleanNombre && !isSuperadmin) {
       keywords.push(cleanNombre);
     }
 
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
     const redirectTo = `${baseUrl}/establecer-password`;
 
     // 1. Generar enlace de invitación y crear usuario en Supabase Auth (Oregon us-west-2)
-    // El Superadmin ya NO define contraseña; el cliente la establece desde el enlace recibido por correo.
+    // El Superadmin ya NO define contraseña; el usuario la establece desde el enlace recibido por correo.
     let authUser: any = null;
     let actionLink: string | null = null;
 
@@ -56,7 +58,8 @@ export async function POST(req: Request) {
         redirectTo,
         data: {
           nombre_completo: cleanNombre,
-          rol: 'cliente',
+          rol: isSuperadmin ? 'superadmin' : 'cliente',
+          is_superadmin: isSuperadmin,
           password_establecido: false,
         },
       },
@@ -127,41 +130,48 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Auto-cruce de paquetes directamente en el inventario y consulta TIB
+    // 4. Auto-cruce de paquetes directamente en el inventario y consulta TIB (solo para clientes regulares)
     let totalLinked = 0;
     try {
-      const validKeywords: string[] = [];
-      const candidateList = [cleanNombre, ...keywords];
-      for (const item of candidateList) {
-        const clean = cleanExactString(item);
-        if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
-          validKeywords.push(clean);
+      if (!isSuperadmin) {
+        const validKeywords: string[] = [];
+        const candidateList = [cleanNombre, ...keywords];
+        for (const item of candidateList) {
+          const clean = cleanExactString(item);
+          if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
+            validKeywords.push(clean);
+          }
         }
-      }
 
-      if (validKeywords.length > 0) {
-        for (const kw of validKeywords) {
-          await portalAdmin
-            .from('paquetes_portal')
-            .update({
-              usuario_email: cleanEmail,
-              actualizado_en: new Date().toISOString(),
-            })
-            .ilike('nombre_consignatario', `%${kw}%`);
+        if (validKeywords.length > 0) {
+          for (const kw of validKeywords) {
+            await portalAdmin
+              .from('paquetes_portal')
+              .update({
+                usuario_email: cleanEmail,
+                actualizado_en: new Date().toISOString(),
+              })
+              .ilike('nombre_consignatario', `%${kw}%`);
+          }
         }
-      }
 
-      try {
-        await syncTibPackagesToPortal({ specificEmail: cleanEmail });
-      } catch (tibErr) {
-        console.warn('[CrearCliente] Aviso al sincronizar paquetes desde TIB API:', tibErr);
-      }
+        try {
+          await syncTibPackagesToPortal({ specificEmail: cleanEmail });
+        } catch (tibErr) {
+          console.warn('[CrearCliente] Aviso al sincronizar paquetes desde TIB API:', tibErr);
+        }
 
-      const { count: finalCount } = await portalAdmin
-        .from('paquetes_portal')
-        .select('id', { count: 'exact', head: true })
-        .eq('usuario_email', cleanEmail);
-      totalLinked = finalCount || 0;
+        const { count: finalCount } = await portalAdmin
+          .from('paquetes_portal')
+          .select('id', { count: 'exact', head: true })
+          .eq('usuario_email', cleanEmail);
+        totalLinked = finalCount || 0;
+      } else {
+        const { count: allCount } = await portalAdmin
+          .from('paquetes_portal')
+          .select('id', { count: 'exact', head: true });
+        totalLinked = allCount || 0;
+      }
     } catch (linkErr) {
       console.warn('[CrearCliente] Aviso al vincular paquetes en base de datos:', linkErr);
     }
@@ -177,8 +187,8 @@ export async function POST(req: Request) {
       email_error: emailError,
       paquetes_vinculados: totalLinked,
       mensaje: emailSent
-        ? `Cliente registrado exitosamente. Se ha enviado el enlace de activación a ${cleanEmail}.`
-        : `Cliente registrado. (Nota de correo: ${emailError || 'Verificar servicio Resend'}).`,
+        ? `Usuario registrado exitosamente. Se ha enviado el enlace de activación a ${cleanEmail}.`
+        : `Usuario registrado. (Nota de correo: ${emailError || 'Verificar servicio Resend'}).`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error interno al crear usuario cliente';
