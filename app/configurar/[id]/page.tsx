@@ -23,6 +23,7 @@ import {
   FileText,
   Lock,
   KeyRound,
+  Ban,
 } from 'lucide-react';
 
 export default function ConfigurarClientePage() {
@@ -38,6 +39,7 @@ export default function ConfigurarClientePage() {
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [email, setEmail] = useState('');
   const [casilleroCodigo, setCasilleroCodigo] = useState('');
+  const [activo, setActivo] = useState(true);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
   const [paquetesVinculados, setPaquetesVinculados] = useState(0);
@@ -120,6 +122,7 @@ export default function ConfigurarClientePage() {
       setNombreCompleto(c.nombre_completo || '');
       setEmail(c.email || '');
       setCasilleroCodigo(c.casillero_codigo || '');
+      setActivo(c.activo !== false);
       setKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave : []);
       setPaquetesVinculados(data.paquetes_vinculados || 0);
     } catch (err: any) {
@@ -189,6 +192,7 @@ export default function ConfigurarClientePage() {
           nombre_completo: nombreCompleto,
           casillero_codigo: casilleroCodigo,
           alias_palabras_clave: keywords,
+          activo: activo,
         }),
       });
 
@@ -598,6 +602,67 @@ export default function ConfigurarClientePage() {
                   <span>{resendMsg.text}</span>
                 </div>
               )}
+            </div>
+
+            {/* Control de Estado de Cuenta (Activar / Desactivar) */}
+            <div style={{
+              gridColumn: 'span 2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              backgroundColor: activo ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${activo ? '#bbf7d0' : '#fecaca'}`,
+              marginTop: '4px',
+            }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: activo ? '#166534' : '#991b1b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {activo ? (
+                    <CheckCircle2 style={{ width: '16px', height: '16px', color: '#16a34a' }} />
+                  ) : (
+                    <Ban style={{ width: '16px', height: '16px', color: '#dc2626' }} />
+                  )}
+                  <span>{activo ? 'Cuenta Habilitada y Activa' : 'Cuenta Desactivada / Bloqueada'}</span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: activo ? '#15803d' : '#b91c1c', marginTop: '2px' }}>
+                  {activo
+                    ? 'El cliente puede iniciar sesión en el portal y gestionar sus paquetes.'
+                    : 'El acceso al portal está suspendido. El cliente no podrá iniciar sesión.'}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActivo(!activo)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: `1px solid ${activo ? '#fecaca' : '#bbf7d0'}`,
+                  backgroundColor: activo ? '#ffffff' : '#16a34a',
+                  color: activo ? '#dc2626' : '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {activo ? (
+                  <>
+                    <Ban style={{ width: '12px', height: '12px' }} />
+                    <span>Desactivar Cuenta</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 style={{ width: '12px', height: '12px' }} />
+                    <span>Activar Cuenta</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 

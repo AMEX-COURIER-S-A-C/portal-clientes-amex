@@ -84,6 +84,15 @@ export default function ClienteLoginPage() {
 
       throw new Error('No se pudo establecer la sesión.');
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
+
+      // Si la cuenta fue desactivada por administración, mostrar de inmediato
+      if (msg.includes('desactivada por administración')) {
+        setErrorMessage(msg);
+        setIsLoading(false);
+        return;
+      }
+
       // Intento fallback directo con el cliente Supabase del Portal
       try {
         const { data: directAuth, error: directError } = await supabasePortal.auth.signInWithPassword({
@@ -92,6 +101,20 @@ export default function ClienteLoginPage() {
         });
 
         if (!directError && directAuth.session) {
+          // Verificar si está activo en clientes_portal
+          const { data: profile } = await supabasePortal
+            .from('clientes_portal')
+            .select('activo')
+            .eq('email', cleanEmail)
+            .maybeSingle();
+
+          if (profile && profile.activo === false) {
+            await supabasePortal.auth.signOut();
+            setErrorMessage('Tu cuenta ha sido desactivada por administración. Contacta con soporte AMEX Courier.');
+            setIsLoading(false);
+            return;
+          }
+
           setIsTransitioningIn(true);
           setTimeout(() => {
             router.push('/');
@@ -100,7 +123,6 @@ export default function ClienteLoginPage() {
         }
       } catch (_) {}
 
-      const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
       setErrorMessage(
         msg === 'Invalid login credentials'
           ? 'Correo o contraseña incorrectos. Revisa tus datos.'

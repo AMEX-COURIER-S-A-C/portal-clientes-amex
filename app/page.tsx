@@ -31,7 +31,10 @@ import {
   Pencil,
   ArrowRightLeft,
   SlidersHorizontal,
-  Calendar
+  Calendar,
+  Ban,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -130,6 +133,10 @@ export default function ClienteDashboardTIB() {
   const [isUpdatingClient, setIsUpdatingClient] = useState(false);
   const [editClientSuccess, setEditClientSuccess] = useState<string | null>(null);
   const [editClientError, setEditClientError] = useState<string | null>(null);
+
+  // Estados para Activar / Desactivar cuenta de cliente y Modal de Confirmación
+  const [clientToDeactivate, setClientToDeactivate] = useState<ClientePortalItem | null>(null);
+  const [isTogglingActiveId, setIsTogglingActiveId] = useState<string | null>(null);
 
   // Estados para el Buscador / Autocompletado de Consignatarios TIB (3,360)
   const [tibSearchResults, setTibSearchResults] = useState<any[]>([]);
@@ -563,6 +570,38 @@ export default function ClienteDashboardTIB() {
   };
 
   const handleResendActivation = handleResetPassword;
+
+  // Activar o desactivar cuenta de cliente en el portal
+  const handleToggleClientActive = async (clientId: string, targetActive: boolean) => {
+    setIsTogglingActiveId(clientId);
+    try {
+      const res = await fetch('/api/toggle-estado-cliente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: clientId, activo: targetActive }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar estado de la cuenta');
+      }
+
+      setClientsList(prev => prev.map(c => c.id === clientId ? { ...c, activo: targetActive } : c));
+      setResendNotice({
+        type: 'success',
+        message: data.message || `Cuenta ${targetActive ? 'activada' : 'desactivada'} exitosamente.`,
+      });
+      setTimeout(() => setResendNotice(null), 6000);
+      setClientToDeactivate(null);
+    } catch (err: any) {
+      setResendNotice({
+        type: 'error',
+        message: err.message || 'Error al cambiar estado de la cuenta',
+      });
+      setTimeout(() => setResendNotice(null), 6000);
+    } finally {
+      setIsTogglingActiveId(null);
+    }
+  };
 
   // Abrir modal de edición de cliente y configuración de matching
   const handleOpenEditClient = (c: ClientePortalItem) => {
@@ -2197,7 +2236,7 @@ export default function ClienteDashboardTIB() {
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
-                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center', minWidth: '260px' }}>Acciones</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center', minWidth: '350px' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2244,9 +2283,14 @@ export default function ClienteDashboardTIB() {
                                 )}
                               </td>
                               <td style={{ padding: '12px 14px' }}>
-                                {c.password_establecido ? (
+                                {c.activo === false ? (
+                                  <span style={{ backgroundColor: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <Ban style={{ width: '11px', height: '11px', color: '#dc2626' }} />
+                                    <span>Desactivado</span>
+                                  </span>
+                                ) : c.password_establecido ? (
                                   <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <CheckCircle2 style={{ width: '11px', height: '11px' }} />
+                                    <CheckCircle2 style={{ width: '11px', height: '11px', color: '#16a34a' }} />
                                     <span>Activo</span>
                                   </span>
                                 ) : (
@@ -2259,7 +2303,8 @@ export default function ClienteDashboardTIB() {
                                 {formatDateTimeTIB(c.creado_en).date}
                               </td>
                               <td style={{ padding: '8px 14px', textAlign: 'center' }}>
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flexWrap: 'nowrap' }}>
+                                  {/* Botón 1: Restablecer Contraseña */}
                                   <button
                                     type="button"
                                     onClick={() => handleResetPassword(c.email)}
@@ -2268,8 +2313,8 @@ export default function ClienteDashboardTIB() {
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '5px',
-                                      padding: '6px 12px',
+                                      gap: '4px',
+                                      padding: '6px 10px',
                                       backgroundColor: resendingEmail === c.email ? '#f3f4f6' : '#fff7ed',
                                       border: `1px solid ${resendingEmail === c.email ? '#e5e7eb' : '#fed7aa'}`,
                                       borderRadius: '6px',
@@ -2279,28 +2324,103 @@ export default function ClienteDashboardTIB() {
                                       cursor: resendingEmail === c.email ? 'not-allowed' : 'pointer',
                                       boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                                       transition: 'all 0.15s ease',
+                                      whiteSpace: 'nowrap',
                                     }}
                                   >
                                     {resendingEmail === c.email ? (
                                       <>
                                         <div style={{ width: '11px', height: '11px', border: '2px solid #ea580c', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                                        <span>Enviando correo...</span>
+                                        <span>Enviando...</span>
                                       </>
                                     ) : (
                                       <>
                                         <KeyRound style={{ width: '12px', height: '12px', color: '#ea580c' }} />
-                                        <span>Restablecer Contraseña</span>
+                                        <span>Restablecer</span>
                                       </>
                                     )}
                                   </button>
 
+                                  {/* Botón 2: Activar o Desactivar Cuenta */}
+                                  {c.activo === false ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleClientActive(c.id, true)}
+                                      disabled={isTogglingActiveId === c.id}
+                                      title="Activar cuenta y permitir acceso al portal"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '6px 10px',
+                                        backgroundColor: isTogglingActiveId === c.id ? '#f3f4f6' : '#f0fdf4',
+                                        border: `1px solid ${isTogglingActiveId === c.id ? '#e5e7eb' : '#bbf7d0'}`,
+                                        borderRadius: '6px',
+                                        color: isTogglingActiveId === c.id ? '#9ca3af' : '#15803d',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        cursor: isTogglingActiveId === c.id ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                        transition: 'all 0.15s ease',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {isTogglingActiveId === c.id ? (
+                                        <>
+                                          <div style={{ width: '11px', height: '11px', border: '2px solid #16a34a', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                          <span>Activando...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserCheck style={{ width: '12px', height: '12px', color: '#16a34a' }} />
+                                          <span>Activar</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setClientToDeactivate(c)}
+                                      disabled={isTogglingActiveId === c.id}
+                                      title="Desactivar cuenta y restringir acceso al portal"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '6px 10px',
+                                        backgroundColor: isTogglingActiveId === c.id ? '#f3f4f6' : '#fef2f2',
+                                        border: `1px solid ${isTogglingActiveId === c.id ? '#e5e7eb' : '#fecaca'}`,
+                                        borderRadius: '6px',
+                                        color: isTogglingActiveId === c.id ? '#9ca3af' : '#b91c1c',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        cursor: isTogglingActiveId === c.id ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                        transition: 'all 0.15s ease',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {isTogglingActiveId === c.id ? (
+                                        <>
+                                          <div style={{ width: '11px', height: '11px', border: '2px solid #dc2626', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                          <span>Desactivando...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserX style={{ width: '12px', height: '12px', color: '#dc2626' }} />
+                                          <span>Desactivar</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {/* Botón 3: Configurar */}
                                   <Link
                                     href={`/configurar/${c.id}`}
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '5px',
-                                      padding: '6px 12px',
+                                      gap: '4px',
+                                      padding: '6px 11px',
                                       backgroundColor: '#0284c7',
                                       border: 'none',
                                       borderRadius: '6px',
@@ -2310,6 +2430,7 @@ export default function ClienteDashboardTIB() {
                                       textDecoration: 'none',
                                       boxShadow: '0 1px 2px rgba(2,132,199,0.25)',
                                       transition: 'all 0.15s ease',
+                                      whiteSpace: 'nowrap',
                                     }}
                                   >
                                     <Pencil style={{ width: '11px', height: '11px' }} />
@@ -3052,6 +3173,124 @@ export default function ClienteDashboardTIB() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación de Desactivación de Cuenta */}
+      {clientToDeactivate && (
+        <div
+          onClick={() => setClientToDeactivate(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 110,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '14px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              maxWidth: '460px',
+              width: '100%',
+              padding: '24px',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  backgroundColor: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#dc2626',
+                  flexShrink: 0,
+                }}
+              >
+                <Ban style={{ width: '22px', height: '22px' }} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                  Desactivar Cuenta de Cliente
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                  Restricción inmediata de acceso al portal
+                </p>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
+              <p style={{ margin: 0, fontSize: '13px', color: '#991b1b', lineHeight: 1.5 }}>
+                ¿Estás seguro de que deseas desactivar la cuenta de <strong>{clientToDeactivate.nombre_completo}</strong> ({clientToDeactivate.email})?
+              </p>
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#b91c1c', lineHeight: 1.4 }}>
+                El usuario no podrá iniciar sesión ni consultar sus envíos hasta que sea reactivado por un administrador.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setClientToDeactivate(null)}
+                disabled={isTogglingActiveId === clientToDeactivate.id}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: '#ffffff',
+                  color: '#4b5563',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleClientActive(clientToDeactivate.id, false)}
+                disabled={isTogglingActiveId === clientToDeactivate.id}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '9px 18px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: isTogglingActiveId === clientToDeactivate.id ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)',
+                }}
+              >
+                {isTogglingActiveId === clientToDeactivate.id ? (
+                  <>
+                    <div style={{ width: '12px', height: '12px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <span>Desactivando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban style={{ width: '14px', height: '14px' }} />
+                    <span>Confirmar Desactivación</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

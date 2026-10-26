@@ -113,6 +113,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Verificar si la cuenta ha sido desactivada por administración
+    if (cleanEmail !== 'sistemaamexcourier@gmail.com') {
+      const portalAdmin = getPortalAdmin();
+      const { data: clientProfile } = await portalAdmin
+        .from('clientes_portal')
+        .select('activo')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (clientProfile && clientProfile.activo === false) {
+        return NextResponse.json(
+          { error: 'Tu cuenta ha sido desactivada por administración. Contacta con soporte AMEX Courier.' },
+          { status: 403 }
+        );
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       session: portalAuth.session,
