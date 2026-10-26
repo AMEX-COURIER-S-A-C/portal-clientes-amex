@@ -135,7 +135,14 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
             const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
             const newWeight = isNaN(weightNum) ? 0 : weightNum;
             const newTipo = (item.container || item.description || 'CAJA').trim().toUpperCase();
-            const newImgUrl = item.img ? `${TIB_MEDIA_BASE_URL}${item.img.replace(/^\/+/, '')}` : null;
+            const newImgUrl = item.img
+              ? item.img
+                  .split(',')
+                  .map((p) => p.trim())
+                  .filter(Boolean)
+                  .map((p) => (p.startsWith('http') ? p : `${TIB_MEDIA_BASE_URL}${p.replace(/^\/+/, '')}`))
+                  .join(',')
+              : null;
             const newTicketUrl = item.ticket ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}` : null;
 
             const isNew = !existing;

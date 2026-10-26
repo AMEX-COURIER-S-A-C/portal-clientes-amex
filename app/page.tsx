@@ -69,6 +69,21 @@ interface ClientePortalItem {
 
 const TIPOS_EMPAQUE = ['CAJA', 'SOBRE', 'BOLSA'];
 const ESTADOS_DISPONIBLES = ['RECIBIDO', 'ENVIADO', 'ENTREGADO'];
+const TIB_AJAX_BASE = 'https://www.tibcourier.com/global-courier/ajax/';
+
+function parseTibImageUrls(rawUrl?: string | null): string[] {
+  if (!rawUrl) return [];
+  return rawUrl
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !part.includes('sin_imagen') && part !== 'null' && part !== 'undefined')
+    .map((part) => {
+      if (part.startsWith('http://') || part.startsWith('https://')) {
+        return part;
+      }
+      return `${TIB_AJAX_BASE}${part.replace(/^\/+/, '')}`;
+    });
+}
 
 export default function ClienteDashboardTIB() {
   const router = useRouter();
@@ -3014,7 +3029,12 @@ export default function ClienteDashboardTIB() {
                   <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#111827', margin: 0 }}>
                     Foto de Recepción Miami — WR {selectedPhoto.wr}
                   </h3>
-                  <span style={{ fontSize: '11px', color: '#6b7280' }}>Evidencia fotográfica registrada en bodega Miami</span>
+                  <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                    Evidencia fotográfica registrada en bodega Miami
+                    {parseTibImageUrls(selectedPhoto.url).length > 1
+                      ? ` (${parseTibImageUrls(selectedPhoto.url).length} fotos)`
+                      : ''}
+                  </span>
                 </div>
               </div>
               <button
@@ -3026,10 +3046,39 @@ export default function ClienteDashboardTIB() {
               </button>
             </div>
 
-            <div style={{ backgroundColor: '#0f172a', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', maxHeight: '65vh', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '68vh', overflowY: 'auto' }}>
+              {parseTibImageUrls(selectedPhoto.url).map((imgUrl, photoIdx, arr) => (
+                <div
+                  key={`${imgUrl}-${photoIdx}`}
+                  style={{ backgroundColor: '#0f172a', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}
+                >
+                  {arr.length > 1 && (
+                    <div style={{ width: '100%', padding: '6px 12px', backgroundColor: '#1e293b', color: '#cbd5e1', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Foto {photoIdx + 1} de {arr.length}</span>
+                      <a
+                        href={imgUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: '#fb923c', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}
+                      >
+                        <span>Ver original</span>
+                        <ExternalLink style={{ width: '12px', height: '12px' }} />
+                      </a>
+                    </div>
+                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imgUrl}
+                    alt={`Paquete ${selectedPhoto.wr} - Foto ${photoIdx + 1}`}
+                    style={{ maxWidth: '100%', maxHeight: arr.length > 1 ? '54vh' : '65vh', objectFit: 'contain' }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'none' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={selectedPhoto.url}
+                src={undefined}
                 alt={`Paquete ${selectedPhoto.wr}`}
                 style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }}
               />
@@ -3040,7 +3089,7 @@ export default function ClienteDashboardTIB() {
                 Presiona <kbd style={{ padding: '2px 6px', background: '#e2e8f0', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>ESC</kbd> o haz clic afuera para cerrar
               </span>
               <a
-                href={selectedPhoto.url}
+                href={parseTibImageUrls(selectedPhoto.url)[0] || selectedPhoto.url}
                 target="_blank"
                 rel="noreferrer"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '6px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer', boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}

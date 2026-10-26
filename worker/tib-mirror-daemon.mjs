@@ -242,8 +242,10 @@ async function notifyAdminNewPackage({ wr, tracking, consignatario, pesoKg, tipo
                   <td style="padding: 14px 20px;">
                     <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Foto del Paquete en TIB</span>
                     <div style="margin-top: 8px;">
-                      <a href="${fotoUrl}" target="_blank" rel="noopener noreferrer">
-                        <img src="${fotoUrl}" alt="Foto ${wr}" style="max-width: 100%; max-height: 220px; border-radius: 8px; border: 1px solid #cbd5e1; display: block;" />
+                      ${fotoUrl.split(',').map((u) => u.trim()).filter(Boolean).map((u) => `<a href="${u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')}" target="_blank" rel="noopener noreferrer" style="display:block; margin-bottom:6px;"><img src="${u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')}" alt="Foto ${wr}" style="max-width: 100%; max-height: 220px; border-radius: 8px; border: 1px solid #cbd5e1; display: block;" /></a>`).join('') || ''}
+                      <!-- multi-photo rendered above -->
+                      <a href="#" style="display:none;">
+                        <span style="display:none;"></span>
                       </a>
                     </div>
                   </td>
@@ -683,7 +685,14 @@ async function runMirrorSyncCycle() {
         }
       }
 
-      const fullImgUrl = item.img ? `${TIB_MEDIA_BASE_URL}${item.img.replace(/^\/+/, '')}` : null;
+      const fullImgUrl = item.img
+        ? item.img
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean)
+            .map((p) => (p.startsWith('http') ? p : `${TIB_MEDIA_BASE_URL}${p.replace(/^\/+/, '')}`))
+            .join(',')
+        : null;
       const fullTicketUrl = item.ticket ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}` : null;
       const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
 
