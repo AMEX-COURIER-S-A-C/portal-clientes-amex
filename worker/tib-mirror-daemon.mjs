@@ -550,10 +550,17 @@ async function runMirrorSyncCycle() {
   console.log(`[TIB-MIRROR 🔄 ${timeStr}] Iniciando ciclo de sincronización espejo...`);
 
   try {
+    // 0. Detectar dinámicamente si existe la columna híbrida usuario_id en paquetes_portal
+    const { error: colCheckErr } = await sb
+      .from('paquetes_portal')
+      .select('usuario_id')
+      .limit(1);
+    const hasUsuarioIdColumn = !colCheckErr;
+
     // 1. Obtener directorio de clientes registrados en tiempo real
     const { data: clientes, error: cErr } = await sb
       .from('clientes_portal')
-      .select('email, nombre_completo, alias_palabras_clave, casillero_codigo')
+      .select('id, email, nombre_completo, alias_palabras_clave, casillero_codigo')
       .eq('activo', true);
 
     if (cErr) throw new Error(`Fallo al leer clientes_portal: ${cErr.message}`);
@@ -561,29 +568,41 @@ async function runMirrorSyncCycle() {
     const nclientExactMap = new Map();
     const iclientMap = new Map();
     const clientDetailsMap = new Map();
+    const clientIdMap = new Map();
+    const keywordInclusionList = [];
 
     for (const c of clientes || []) {
       const email = c.email.trim().toLowerCase();
       clientDetailsMap.set(email, c.nombre_completo || 'Cliente AMEX');
+      if (c.id) clientIdMap.set(email, c.id);
       if (email === ADMIN_MASTER_EMAIL) continue;
 
       const cleanNombre = cleanExactString(c.nombre_completo);
-      if (cleanNombre) nclientExactMap.set(cleanNombre, email);
+      if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX') {
+        nclientExactMap.set(cleanNombre, email);
+        keywordInclusionList.push({ keyword: cleanNombre, email });
+      }
 
       if (Array.isArray(c.alias_palabras_clave)) {
         for (const alias of c.alias_palabras_clave) {
           const cleanAlias = cleanExactString(alias);
-          if (cleanAlias && cleanAlias.length >= 3) {
+          if (cleanAlias && cleanAlias.length >= 2 && cleanAlias !== 'AMEX') {
             nclientExactMap.set(cleanAlias, email);
+            keywordInclusionList.push({ keyword: cleanAlias, email });
           }
         }
       }
 
       if (c.casillero_codigo) {
         const cleanCasillero = cleanExactString(c.casillero_codigo);
-        if (cleanCasillero) iclientMap.set(cleanCasillero, email);
+        if (cleanCasillero && cleanCasillero !== 'AMEX' && !cleanCasillero.startsWith('AMX-')) {
+          iclientMap.set(cleanCasillero, email);
+          keywordInclusionList.push({ keyword: cleanCasillero, email });
+        }
       }
     }
+
+    keywordInclusionList.sort((a, b) => b.keyword.length - a.keyword.length);
 
     console.log(`[TIB-MIRROR] Clientes activos monitoreados: ${clientDetailsMap.size}`);
 
@@ -620,11 +639,18 @@ async function runMirrorSyncCycle() {
 
       let matchedEmail = undefined;
 
-      // Regla 1: Coincidencia exacta con cliente regular
+      // Regla 1: Coincidencia exacta o por inclusión de palabras clave con cliente regular
       if (cleanConsignee && nclientExactMap.has(cleanConsignee)) {
         matchedEmail = nclientExactMap.get(cleanConsignee);
       } else if (cleanIclient && iclientMap.has(cleanIclient)) {
         matchedEmail = iclientMap.get(cleanIclient);
+      } else if (cleanConsignee) {
+        for (const kwItem of keywordInclusionList) {
+          if (cleanConsignee.includes(kwItem.keyword)) {
+            matchedEmail = kwItem.email;
+            break;
+          }
+        }
       }
 
       // Regla 2: Cualquier paquete no asignado a un cliente regular se asigna al Superadmin Master
@@ -655,24 +681,30 @@ async function runMirrorSyncCycle() {
         if (!isNaN(d.getTime())) parsedDate = d.toISOString();
       }
 
+      const recordObj = {
+        numero_recibo_bodega: canonicalWr,
+        tracking: item.tracking?.trim() || null,
+        nombre_consignatario: (item.nclient || '').trim(),
+        usuario_email: matchedEmail,
+        tipo_empaque: (item.container || item.description || 'CAJA').trim().toUpperCase(),
+        peso_kg: isNaN(weightNum) ? 0 : weightNum,
+        estado_tib: statusTib,
+        estado_amex: 'en_almacen',
+        estado_visible: getEstadoVisiblePortal('en_almacen', statusTib),
+        tib_imagen_url: fullImgUrl,
+        tib_ticket_pdf_url: fullTicketUrl,
+        ubicacion_almacen: item.rack?.trim() || null,
+        erp_paquete_id: null,
+        creado_en: parsedDate,
+        actualizado_en: new Date().toISOString(),
+      };
+
+      if (hasUsuarioIdColumn) {
+        recordObj.usuario_id = clientIdMap.get(matchedEmail) || null;
+      }
+
       processedWrsMap.set(canonicalWr, {
-        record: {
-          numero_recibo_bodega: canonicalWr,
-          tracking: item.tracking?.trim() || null,
-          nombre_consignatario: (item.nclient || '').trim(),
-          usuario_email: matchedEmail,
-          tipo_empaque: (item.container || item.description || 'CAJA').trim().toUpperCase(),
-          peso_kg: isNaN(weightNum) ? 0 : weightNum,
-          estado_tib: statusTib,
-          estado_amex: 'en_almacen',
-          estado_visible: getEstadoVisiblePortal('en_almacen', statusTib),
-          tib_imagen_url: fullImgUrl,
-          tib_ticket_pdf_url: fullTicketUrl,
-          ubicacion_almacen: item.rack?.trim() || null,
-          erp_paquete_id: null,
-          creado_en: parsedDate,
-          actualizado_en: new Date().toISOString(),
-        },
+        record: recordObj,
         priority: currentPrio,
         statusTib,
         matchedEmail,
@@ -744,6 +776,74 @@ async function runMirrorSyncCycle() {
           console.error(`[TIB-MIRROR ❌] Error en lote ${i}:`, upsertErr.message);
         } else {
           upsertedCount += chunk.length;
+        }
+      }
+
+      // 5.B. Actualización Automática en Tiempo Real del Catálogo de Consignatarios (amex_portal_clientes)
+      if (!isInitialRun) {
+        const affectedConsignees = new Set(
+          recordsToUpsert
+            .map((r) => cleanExactString(r.nombre_consignatario))
+            .filter(Boolean)
+        );
+
+        if (affectedConsignees.size > 0) {
+          const catalogStatsMap = new Map();
+
+          for (const [wr, entry] of processedWrsMap.entries()) {
+            const cName = cleanExactString(entry.record.nombre_consignatario);
+            if (!cName || !affectedConsignees.has(cName)) continue;
+
+            if (!catalogStatsMap.has(cName)) {
+              catalogStatsMap.set(cName, {
+                nombre: cName,
+                iclient: entry.rawItem?.iclient || null,
+                total_paquetes: 0,
+                recibidos: 0,
+                eniviados: 0,
+                entregados: 0,
+                ultimo_wr: wr,
+                ultimo_tracking: entry.record.tracking || null,
+                ultima_fecha: entry.rawItem?.fecRegister || entry.record.creado_en,
+                email: entry.rawItem?.emailClient || null,
+                actualizado_en: new Date().toISOString(),
+              });
+            }
+
+            const stat = catalogStatsMap.get(cName);
+            stat.total_paquetes++;
+            if (entry.statusTib === 'RECIBIDO') stat.recibidos++;
+            else if (entry.statusTib === 'ENVIADO') stat.eniviados++;
+            else if (entry.statusTib === 'ENTREGADO') stat.entregados++;
+            stat.ultimo_wr = wr;
+            if (entry.record.tracking) stat.ultimo_tracking = entry.record.tracking;
+          }
+
+          const catalogUpdates = Array.from(catalogStatsMap.values()).map((s) => ({
+            nombre: s.nombre,
+            iclient: s.iclient,
+            total_paquetes: s.total_paquetes,
+            recibidos: s.recibidos,
+            enviados: s.eniviados,
+            entregados: s.entregados,
+            ultimo_wr: s.ultimo_wr,
+            ultimo_tracking: s.ultimo_tracking,
+            ultima_fecha: s.ultima_fecha,
+            email: s.email,
+            actualizado_en: s.actualizado_en,
+          }));
+
+          if (catalogUpdates.length > 0) {
+            const { error: catErr } = await sb
+              .from('amex_portal_clientes')
+              .upsert(catalogUpdates, { onConflict: 'nombre' });
+
+            if (catErr) {
+              console.warn(`[TIB-MIRROR ⚠️] Aviso al actualizar catálogo amex_portal_clientes:`, catErr.message);
+            } else {
+              console.log(`[TIB-MIRROR 📊] Catálogo amex_portal_clientes actualizado para ${catalogUpdates.length} consignatario(s).`);
+            }
+          }
         }
       }
     }
