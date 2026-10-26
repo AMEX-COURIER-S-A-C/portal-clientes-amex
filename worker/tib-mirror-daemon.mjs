@@ -79,7 +79,7 @@ const RESEND_FROM = rawResendFrom.includes('<') && rawResendFrom.includes('>')
   ? rawResendFrom
   : `AMEX Courier <${rawResendFrom}>`;
 
-const ADMIN_MASTER_EMAIL = 'sistemaamexcourier@gmail.com';
+const ADMIN_MASTER_EMAIL = process.env.ADMIN_MASTER_EMAIL || 'sistemaamexcourier@gmail.com';
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
 const POLL_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES || '5', 10);
 const POLL_INTERVAL_MS = POLL_INTERVAL_MINUTES * 60 * 1000;
@@ -127,6 +127,135 @@ function getEstadoVisiblePortal(estadoAmex, estadoTib) {
   if (normTib === 'RECIBIDO') return 'RECIBIDO MIAMI';
   if (estadoAmex === 'en_almacen' || estadoAmex === 'recibido') return 'EN ALMACÉN LINCE';
   return 'RECIBIDO MIAMI';
+}
+
+/**
+ * Notificación inmediata por correo con Resend al Superadmin (sistemaamexcourier@gmail.com)
+ * cada vez que la API oficial de TIB registra un nuevo WR en almacén.
+ */
+async function notifyAdminNewPackage({ wr, tracking, consignatario, pesoKg, tipoEmpaque, fotoUrl, matchedEmail, clientName, fecRegister }) {
+  if (!resend) {
+    console.warn(`[NOTIFICACIÓN ADMIN] Resend no configurado. Omitiendo email a ${ADMIN_MASTER_EMAIL}`);
+    return;
+  }
+
+  try {
+    const trackingText = tracking && tracking !== '—' ? tracking : 'Sin Tracking Asignado';
+    const pesoText = pesoKg != null && pesoKg > 0 ? `${Number(pesoKg).toFixed(2)} kg` : 'Por registrar';
+    const tipoText = tipoEmpaque || 'Caja / Paquete';
+    const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL || 'https://clientes.sistemaamexcourier.online';
+    const esClienteRegular = matchedEmail && matchedEmail !== ADMIN_MASTER_EMAIL;
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Nuevo WR Registrado en TIB - AMEX Courier</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1329; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0b1329; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="580" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.35); max-width: 580px; width: 100%;">
+          <tr>
+            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #ff5722 100%); padding: 36px 30px; text-align: center; border-bottom: 3px solid #ff5722;">
+              <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="160" style="display: block; margin: 0 auto 14px auto;" />
+              <span style="display: inline-block; background: rgba(255, 87, 34, 0.2); border: 1px solid rgba(255, 87, 34, 0.4); color: #ffccbc; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">
+                🔔 Alerta Superadmin • Nuevo WR en TIB
+              </span>
+              <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 900;">¡Nuevo WR Registrado en Almacén!</h1>
+              <p style="color: #cbd5e1; margin: 8px 0 0 0; font-size: 13.5px;">El demonio VPS ha detectado un nuevo paquete registrado en la API de TIB Courier.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 30px 24px 30px;">
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155;">Hola <strong>Superadmin AMEX</strong>,</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #475569;">Se acaba de registrar un nuevo recibo de almacén (WR) en la API de TIB con las siguientes características:</p>
+              
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px;">
+                <tr>
+                  <td style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Warehouse (WR)</span>
+                    <div style="font-size: 19px; font-weight: 900; color: #ff5722; font-family: monospace; margin-top: 2px;">${wr}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Consignatario Reportado por TIB</span>
+                    <div style="font-size: 14.5px; font-weight: 800; color: #0f172a; margin-top: 2px;">${consignatario || 'Sin Consignatario'}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Asignación en Portal de Clientes</span>
+                    <div style="font-size: 13.5px; font-weight: 700; margin-top: 4px;">
+                      ${esClienteRegular
+                        ? `<span style="display: inline-block; background-color: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800;">👤 Cliente Identificado: ${clientName} (${matchedEmail})</span>`
+                        : `<span style="display: inline-block; background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800;">🏢 Asignado a Superadmin (${ADMIN_MASTER_EMAIL})</span>`
+                      }
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Tracking Original</span>
+                    <div style="font-size: 13.5px; font-weight: 700; color: #1e293b; font-family: monospace; margin-top: 2px;">${trackingText}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; ${fotoUrl || fecRegister ? 'border-bottom: 1px solid #e2e8f0;' : ''}">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Peso y Empaque</span>
+                    <div style="font-size: 14px; font-weight: 800; color: #1e293b; margin-top: 2px;">${pesoText} • ${tipoText}</div>
+                  </td>
+                </tr>
+                ${fecRegister ? `
+                <tr>
+                  <td style="padding: 14px 20px; ${fotoUrl ? 'border-bottom: 1px solid #e2e8f0;' : ''}">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Fecha de Registro en TIB</span>
+                    <div style="font-size: 13px; font-weight: 700; color: #334155; margin-top: 2px;">${fecRegister}</div>
+                  </td>
+                </tr>
+                ` : ''}
+                ${fotoUrl ? `
+                <tr>
+                  <td style="padding: 14px 20px;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Foto del Paquete en TIB</span>
+                    <div style="margin-top: 8px;">
+                      <a href="${fotoUrl}" target="_blank" rel="noopener noreferrer">
+                        <img src="${fotoUrl}" alt="Foto ${wr}" style="max-width: 100%; max-height: 220px; border-radius: 8px; border: 1px solid #cbd5e1; display: block;" />
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+                ` : ''}
+              </table>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 34px; font-size: 14.5px; font-weight: 800; color: #ffffff; background: linear-gradient(135deg, #ff5722 0%, #e64a19 100%); text-decoration: none; border-radius: 8px;">
+                  Abrir Panel Superadmin →
+                </a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await resend.emails.send({
+      from: RESEND_FROM,
+      to: [ADMIN_MASTER_EMAIL],
+      subject: `🔔 [Nuevo WR TIB] ${wr} - ${consignatario || 'Sin Consignatario'} (${pesoText})`,
+      html: htmlContent,
+    });
+
+    console.log(`[NOTIFICACIÓN ADMIN ✅] Alerta de nuevo WR enviada a ${ADMIN_MASTER_EMAIL} para el paquete ${wr}`);
+  } catch (err) {
+    console.error(`[NOTIFICACIÓN ADMIN ❌] Error al enviar alerta a ${ADMIN_MASTER_EMAIL}:`, err.message);
+  }
 }
 
 /**
@@ -554,22 +683,28 @@ async function runMirrorSyncCycle() {
     // 4. Detección Inteligente de Cambios (Delta) y Transiciones de Estado:
     // Solo escribimos en la base de datos lo que es nuevo o lo que cambió de estado
     const recordsToUpsert = [];
+    const adminCandidatesToNotify = [];
     const clientCandidatesToNotify = [];
 
     for (const [canonicalWr, entry] of processedWrsMap.entries()) {
       const cachedStatus = daemonWrStatusCache.get(canonicalWr);
 
       if (!cachedStatus) {
-        // WR nuevo no visto en la caché de este demonio
+        // WR nuevo no visto en la caché de este demonio (nuevo paquete registrado por TIB)
         recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, entry.statusTib);
 
-        // Si no es el ciclo de arranque inicial y pertenece a un cliente regular registrado
-        if (!isInitialRun && entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
-          clientCandidatesToNotify.push({
-            type: entry.statusTib, // 'RECIBIDO' | 'ENVIADO' | 'ENTREGADO'
-            entry,
-          });
+        if (!isInitialRun) {
+          // 1. Siempre notificar al Superadmin (sistemaamexcourier@gmail.com) cuando TIB registra un nuevo WR
+          adminCandidatesToNotify.push(entry);
+
+          // 2. Si pertenece a un cliente regular registrado, notificar también al cliente
+          if (entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
+            clientCandidatesToNotify.push({
+              type: entry.statusTib, // 'RECIBIDO' | 'ENVIADO' | 'ENTREGADO'
+              entry,
+            });
+          }
         }
       } else if (cachedStatus !== entry.statusTib) {
         // WR existente cuyo estado avanzó (ej. RECIBIDO -> ENVIADO o ENVIADO -> ENTREGADO)
@@ -613,8 +748,39 @@ async function runMirrorSyncCycle() {
       }
     }
 
-    // 6. Si hay candidatos a notificar y no es el ciclo inicial, despachar correos según tipo de evento
+    // 6. Si hay candidatos a notificar y no es el ciclo inicial, despachar correos
     let sentEmailsCount = 0;
+
+    // A) Alertas de nuevo WR para el Superadmin (sistemaamexcourier@gmail.com)
+    if (adminCandidatesToNotify.length > 0 && !isInitialRun) {
+      console.log(`[TIB-MIRROR ✉️] Enviando ${adminCandidatesToNotify.length} alertas de nuevo WR al Superadmin (${ADMIN_MASTER_EMAIL})...`);
+      for (const entry of adminCandidatesToNotify) {
+        const wr = entry.record.numero_recibo_bodega;
+        const tracking = entry.record.tracking;
+        const consignatario = entry.record.nombre_consignatario;
+        const pesoKg = entry.record.peso_kg;
+        const tipoEmpaque = entry.record.tipo_empaque;
+        const fotoUrl = entry.record.tib_imagen_url;
+        const matchedEmail = entry.matchedEmail;
+        const clientName = clientDetailsMap.get(matchedEmail) || consignatario || 'Cliente AMEX';
+        const fecRegister = entry.rawItem?.fecRegister || null;
+
+        await notifyAdminNewPackage({
+          wr,
+          tracking,
+          consignatario,
+          pesoKg,
+          tipoEmpaque,
+          fotoUrl,
+          matchedEmail,
+          clientName,
+          fecRegister,
+        });
+        sentEmailsCount++;
+      }
+    }
+
+    // B) Alertas para clientes regulares registrados
     if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
       console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes...`);
       for (const item of clientCandidatesToNotify) {
