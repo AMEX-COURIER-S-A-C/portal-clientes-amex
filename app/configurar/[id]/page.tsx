@@ -36,8 +36,6 @@ export default function ConfigurarClientePage() {
   const [client, setClient] = useState<any | null>(null);
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [email, setEmail] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [documentoIdentidad, setDocumentoIdentidad] = useState('');
   const [casilleroCodigo, setCasilleroCodigo] = useState('');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
@@ -120,8 +118,6 @@ export default function ConfigurarClientePage() {
       setClient(c);
       setNombreCompleto(c.nombre_completo || '');
       setEmail(c.email || '');
-      setTelefono(c.telefono || '');
-      setDocumentoIdentidad(c.documento_identidad || '');
       setCasilleroCodigo(c.casillero_codigo || '');
       setKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave : []);
       setPaquetesVinculados(data.paquetes_vinculados || 0);
@@ -190,8 +186,6 @@ export default function ConfigurarClientePage() {
         body: JSON.stringify({
           id: clientId,
           nombre_completo: nombreCompleto,
-          telefono: telefono,
-          documento_identidad: documentoIdentidad,
           casillero_codigo: casilleroCodigo,
           alias_palabras_clave: keywords,
         }),
@@ -534,6 +528,19 @@ export default function ConfigurarClientePage() {
 
             <div>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                Código de Casillero
+              </label>
+              <input
+                type="text"
+                value={casilleroCodigo}
+                onChange={(e) => setCasilleroCodigo(e.target.value)}
+                placeholder="Ej. AMX-001 o 31888"
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Correo de Acceso (Login)
               </label>
               <input
@@ -588,45 +595,6 @@ export default function ConfigurarClientePage() {
                   <span>{resendMsg.text}</span>
                 </div>
               )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Código de Casillero
-              </label>
-              <input
-                type="text"
-                value={casilleroCodigo}
-                onChange={(e) => setCasilleroCodigo(e.target.value)}
-                placeholder="Ej. AMX-001 o 31888"
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Documento de Identidad (DNI / RUC)
-              </label>
-              <input
-                type="text"
-                value={documentoIdentidad}
-                onChange={(e) => setDocumentoIdentidad(e.target.value)}
-                placeholder="Ej. 72410845"
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Teléfono de Contacto
-              </label>
-              <input
-                type="text"
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                placeholder="Ej. 982432561"
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-              />
             </div>
           </div>
 

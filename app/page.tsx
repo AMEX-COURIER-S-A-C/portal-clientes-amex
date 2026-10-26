@@ -116,8 +116,6 @@ export default function ClienteDashboardTIB() {
   const [newClientEmail, setNewClientEmail] = useState('');
   const [resendingEmail, setResendingEmail] = useState<string | null>(null);
   const [resendNotice, setResendNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [newClientTelefono, setNewClientTelefono] = useState('');
-  const [newClientDni, setNewClientDni] = useState('');
   const [newClientKeywords, setNewClientKeywords] = useState('');
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [createClientSuccess, setCreateClientSuccess] = useState<string | null>(null);
@@ -126,8 +124,6 @@ export default function ClienteDashboardTIB() {
   // Estados para Editar Cliente / Configurar Palabras Clave y Matching
   const [editingClient, setEditingClient] = useState<ClientePortalItem | null>(null);
   const [editNombre, setEditNombre] = useState('');
-  const [editTelefono, setEditTelefono] = useState('');
-  const [editDni, setEditDni] = useState('');
   const [editCasillero, setEditCasillero] = useState('');
   const [editKeywords, setEditKeywords] = useState('');
   const [isUpdatingClient, setIsUpdatingClient] = useState(false);
@@ -569,8 +565,6 @@ export default function ClienteDashboardTIB() {
   const handleOpenEditClient = (c: ClientePortalItem) => {
     setEditingClient(c);
     setEditNombre(c.nombre_completo || '');
-    setEditTelefono(c.telefono || '');
-    setEditDni(c.documento_identidad || '');
     setEditCasillero(c.casillero_codigo || '');
     setEditKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave.join(', ') : '');
     setEditClientSuccess(null);
@@ -2045,9 +2039,6 @@ export default function ClienteDashboardTIB() {
                       setSelectedTibClient(null);
                       setNewClientNombre('');
                       setNewClientEmail('');
-                
-                      setNewClientTelefono('');
-                      setNewClientDni('');
                       setNewClientKeywords('');
                       setCreateClientSuccess(null);
                       setCreateClientError(null);
