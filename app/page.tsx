@@ -163,9 +163,9 @@ export default function ClienteDashboardTIB() {
   // Sincronización masiva de inventario
   const [isSyncingAll, setIsSyncingAll] = useState(false);
 
-  // Paginación estilo TIB
+  // Paginación estilo TIB (50 filas por página)
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
+  const itemsPerPage = 50;
 
   // 1. Garantizar scroll vertical libre y nativo en el navegador
   useEffect(() => {
