@@ -80,24 +80,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   );
   const superadminId = superadminProfile?.id || null;
 
-  // 3. Si es una actualización de un cliente específico, liberar primero sus paquetes previos
-  //    hacia la cuenta maestra por si se eliminó alguna palabra clave.
-  if (isSpecificRegularClient && specificTarget) {
-    const resetPayload: Record<string, any> = {
-      usuario_email: ADMIN_MASTER_EMAIL,
-      actualizado_en: new Date().toISOString(),
-    };
-    if (hasUsuarioIdColumn) {
-      resetPayload.usuario_id = superadminId;
-    }
-
-    await portalAdmin
-      .from('paquetes_portal')
-      .update(resetPayload)
-      .eq('usuario_email', specificTarget);
-  }
-
-  // 4. Determinar qué clientes regulares procesar
+  // 3. Determinar qué clientes regulares procesar
   const regularClientsToProcess = clientesList.filter((c) => {
     const email = c.email?.trim().toLowerCase();
     if (!email || email === ADMIN_MASTER_EMAIL) return false;
@@ -105,7 +88,8 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     return true;
   });
 
-  // 5. Ejecutar cruce indexado en PostgreSQL por cada cliente regular y sus palabras clave
+  // 4. Ejecutar cruce diferencial en PostgreSQL por cada cliente regular y sus palabras clave
+  //    Solo actualiza filas cuyo propietario o usuario_id realmente haya cambiado (0 escrituras innecesarias).
   for (const client of regularClientsToProcess) {
     const targetEmail = client.email.trim().toLowerCase();
     const searchTerms = new Set<string>();
@@ -126,7 +110,6 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
 
     if (client.casillero_codigo) {
       const cleanCasillero = cleanExactString(client.casillero_codigo);
-      // Ignorar códigos correlativos internos AMX-001 en el nombre del consignatario de TIB
       if (
         cleanCasillero &&
         cleanCasillero.length >= 3 &&
@@ -134,6 +117,37 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
         !cleanCasillero.startsWith('AMX-')
       ) {
         searchTerms.add(cleanCasillero);
+      }
+    }
+
+    const termsArray = Array.from(searchTerms);
+
+    // Si se editó un cliente específico, liberar únicamente los paquetes que ya no coincidan con sus alias actuales
+    if (isSpecificRegularClient) {
+      const { data: currentClientPkgs } = await portalAdmin
+        .from('paquetes_portal')
+        .select('id, nombre_consignatario')
+        .eq('usuario_email', targetEmail);
+
+      const idsToRelease = (currentClientPkgs || [])
+        .filter((pkg) => {
+          const cName = cleanExactString(pkg.nombre_consignatario);
+          return !termsArray.some((t) => cName.includes(t));
+        })
+        .map((pkg) => pkg.id);
+
+      if (idsToRelease.length > 0) {
+        const resetPayload: Record<string, any> = {
+          usuario_email: ADMIN_MASTER_EMAIL,
+          actualizado_en: new Date().toISOString(),
+        };
+        if (hasUsuarioIdColumn) {
+          resetPayload.usuario_id = superadminId;
+        }
+        await portalAdmin
+          .from('paquetes_portal')
+          .update(resetPayload)
+          .in('id', idsToRelease);
       }
     }
 
@@ -145,12 +159,19 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       updatePayload.usuario_id = client.id;
     }
 
-    for (const term of searchTerms) {
-      await portalAdmin
-        .from('paquetes_portal')
-        .update(updatePayload)
-        .ilike('nombre_consignatario', `%${term}%`);
-    }
+    const diffFilter = hasUsuarioIdColumn
+      ? `usuario_email.neq.${targetEmail},usuario_id.is.null`
+      : `usuario_email.neq.${targetEmail}`;
+
+    await Promise.all(
+      termsArray.map((term) =>
+        portalAdmin
+          .from('paquetes_portal')
+          .update(updatePayload)
+          .ilike('nombre_consignatario', `%${term}%`)
+          .or(diffFilter)
+      )
+    );
   }
 
   // 6. Asegurar que los paquetes del Superadmin tengan su usuario_id vinculado si la columna existe
