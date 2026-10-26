@@ -80,6 +80,11 @@ const RESEND_FROM = rawResendFrom.includes('<') && rawResendFrom.includes('>')
   : `AMEX Courier <${rawResendFrom}>`;
 
 const ADMIN_MASTER_EMAIL = process.env.ADMIN_MASTER_EMAIL || 'sistemaamexcourier@gmail.com';
+const SUPERADMIN_EMAILS = new Set([
+  ADMIN_MASTER_EMAIL.toLowerCase(),
+  'sistemaamexcourier@gmail.com',
+  'gerencia@amexcourierperu.com',
+]);
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
 const POLL_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES || '5', 10);
 const POLL_INTERVAL_MS = POLL_INTERVAL_MINUTES * 60 * 1000;
@@ -105,6 +110,21 @@ let isInitialRun = true;
 // -------------------------------------------------------------
 // 3. FUNCIONES AUXILIARES
 // -------------------------------------------------------------
+function buildRecordFingerprint(rec, fecModify) {
+  return [
+    rec.estado_tib || '',
+    cleanExactString(rec.nombre_consignatario),
+    cleanExactString(rec.tracking),
+    Number(rec.peso_kg || 0).toFixed(2),
+    cleanExactString(rec.tipo_empaque),
+    rec.tib_imagen_url || '',
+    rec.tib_ticket_pdf_url || '',
+    rec.ubicacion_almacen || '',
+    rec.usuario_email || '',
+    fecModify || '',
+  ].join('|');
+}
+
 function cleanExactString(str) {
   return String(str || '')
     .trim()
@@ -575,7 +595,7 @@ async function runMirrorSyncCycle() {
       const email = c.email.trim().toLowerCase();
       clientDetailsMap.set(email, c.nombre_completo || 'Cliente AMEX');
       if (c.id) clientIdMap.set(email, c.id);
-      if (email === ADMIN_MASTER_EMAIL) continue;
+      if (SUPERADMIN_EMAILS.has(email)) continue;
 
       const cleanNombre = cleanExactString(c.nombre_completo);
       if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX') {
@@ -711,12 +731,15 @@ async function runMirrorSyncCycle() {
     const clientCandidatesToNotify = [];
 
     for (const [canonicalWr, entry] of processedWrsMap.entries()) {
-      const cachedStatus = daemonWrStatusCache.get(canonicalWr);
+      const cached = daemonWrStatusCache.get(canonicalWr);
+      const cachedStatus = typeof cached === 'object' && cached ? cached.statusTib : cached;
+      const cachedFingerprint = typeof cached === 'object' && cached ? cached.fingerprint : null;
+      const currentFingerprint = buildRecordFingerprint(entry.record, entry.rawItem?.fecModify);
 
       if (!cachedStatus) {
         // WR nuevo no visto en la caché de este demonio (nuevo paquete registrado por TIB)
         recordsToUpsert.push(entry.record);
-        daemonWrStatusCache.set(canonicalWr, entry.statusTib);
+        daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
 
         if (!isInitialRun) {
           // 1. Siempre notificar al Superadmin (sistemaamexcourier@gmail.com) cuando TIB registra un nuevo WR
@@ -733,9 +756,22 @@ async function runMirrorSyncCycle() {
       } else if (cachedStatus !== entry.statusTib) {
         // WR existente cuyo estado avanzó (ej. RECIBIDO -> ENVIADO o ENVIADO -> ENTREGADO)
         recordsToUpsert.push(entry.record);
-        daemonWrStatusCache.set(canonicalWr, entry.statusTib);
+        daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
 
         if (!isInitialRun && entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
+          if (entry.statusTib === 'ENVIADO') {
+            clientCandidatesToNotify.push({ type: 'ENVIADO', entry });
+          } else if (entry.statusTib === 'ENTREGADO') {
+            clientCandidatesToNotify.push({ type: 'ENTREGADO', entry });
+          }
+        }
+      } else if (cachedFingerprint && cachedFingerprint !== currentFingerprint) {
+        // WR existente cuyos datos fueron editados en TIB (ej. corrección de nombre_consignatario, peso, tracking o foto)
+        console.log(`[TIB-MIRROR ✏️] Edición detectada en TIB para ${canonicalWr}: "${entry.record.nombre_consignatario}" (${entry.statusTib})`);
+        recordsToUpsert.push(entry.record);
+        daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
+      }
+      if (false) {
           if (entry.statusTib === 'ENVIADO') {
             clientCandidatesToNotify.push({
               type: 'ENVIADO',

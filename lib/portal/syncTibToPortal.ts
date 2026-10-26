@@ -1,5 +1,6 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
+import { getTibApiCredentials, normalizeTibWr, TIB_MEDIA_BASE_URL } from '@/lib/tib/apiClient';
 
 export { ADMIN_MASTER_EMAIL };
 
@@ -42,15 +43,13 @@ export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: s
 }
 
 /**
- * Motor de Re-vinculación Ultrarrápida en Supabase (< 1 segundo).
- * 
- * Arquitectura desacoplada:
- * - El demonio 24/7 en el VPS de Hostinger descarga continuamente los paquetes desde Miami (API TIB)
- *   hacia `paquetes_portal`.
- * - Esta función realiza el cruce inteligente (matching) de clientes y palabras clave directamente
- *   sobre `paquetes_portal` en PostgreSQL sin necesidad de re-descargar los 60,550 paquetes por red,
- *   eliminando riesgos de Timeout 504 en Vercel y respondiendo de forma instantánea.
- * - Soporta enlace híbrido (`usuario_email` + `usuario_id` UUID).
+ * Motor de Sincronización en Vivo (Delta de RECIBIDO) + Re-vinculación Ultrarrápida en Supabase.
+ *
+ * - Cuando se invoca de forma global (botón "Sincronizar con API TIB"), descarga en vivo los paquetes
+ *   en estado RECIBIDO desde la API de TIB (~1s) y actualiza inmediatamente cualquier paquete nuevo
+ *   o cuyos datos (nombre_consignatario, tracking, peso, empaque, foto o ticket) hayan sido corregidos en TIB.
+ * - Ejecuta el cruce inteligente (matching) de clientes y palabras clave directamente sobre `paquetes_portal`.
+ * - Actualiza las estadísticas del catálogo `amex_portal_clientes` para los consignatarios modificados.
  */
 export async function syncTibPackagesToPortal(options?: { specificEmail?: string }) {
   const portalAdmin = getPortalAdmin();
@@ -80,6 +79,160 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     (c) => c.email?.trim().toLowerCase() === ADMIN_MASTER_EMAIL
   );
   const superadminId = superadminProfile?.id || null;
+
+  // 2.B. Sincronización en vivo de paquetes RECIBIDO desde TIB API (detecta nuevos WRs y correcciones de nombre/peso/foto)
+  let updatedFromTibCount = 0;
+  if (!isSpecificRegularClient) {
+    try {
+      const creds = getTibApiCredentials();
+      const tibRes = await fetch(creds.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: creds.email,
+          password: creds.password,
+          status: 'RECIBIDO',
+        }),
+      });
+
+      if (tibRes.ok) {
+        const tibJson = await tibRes.json();
+        const rawRecibidos: RawTibItem[] = Array.isArray(tibJson?.data) ? tibJson.data : [];
+
+        if (rawRecibidos.length > 0) {
+          const tibMap = new Map<string, RawTibItem>();
+          for (const item of rawRecibidos) {
+            const canonicalWr = normalizeTibWr(item.wr, item.seqwr);
+            if (canonicalWr) {
+              tibMap.set(canonicalWr, item);
+            }
+          }
+
+          const wrList = Array.from(tibMap.keys());
+          const existingMap = new Map<string, any>();
+
+          // Consultar en lotes los WRs existentes en paquetes_portal para detectar ediciones de metadatos
+          const CHUNK = 500;
+          for (let i = 0; i < wrList.length; i += CHUNK) {
+            const slice = wrList.slice(i, i + CHUNK);
+            const { data: existingRows } = await portalAdmin
+              .from('paquetes_portal')
+              .select('numero_recibo_bodega, nombre_consignatario, tracking, peso_kg, tipo_empaque, tib_imagen_url, tib_ticket_pdf_url, estado_tib, usuario_email, creado_en')
+              .in('numero_recibo_bodega', slice);
+
+            for (const row of existingRows || []) {
+              existingMap.set(row.numero_recibo_bodega, row);
+            }
+          }
+
+          const deltaRecordsToUpsert: Record<string, any>[] = [];
+          const affectedConsignees = new Set<string>();
+
+          for (const [canonicalWr, item] of tibMap.entries()) {
+            const existing = existingMap.get(canonicalWr);
+            const newConsignee = (item.nclient || '').trim();
+            const newTracking = item.tracking?.trim() || null;
+            const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
+            const newWeight = isNaN(weightNum) ? 0 : weightNum;
+            const newTipo = (item.container || item.description || 'CAJA').trim().toUpperCase();
+            const newImgUrl = item.img ? `${TIB_MEDIA_BASE_URL}${item.img.replace(/^\/+/, '')}` : null;
+            const newTicketUrl = item.ticket ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}` : null;
+
+            const isNew = !existing;
+            const isModified =
+              existing &&
+              (cleanExactString(existing.nombre_consignatario) !== cleanExactString(newConsignee) ||
+                cleanExactString(existing.tracking) !== cleanExactString(newTracking) ||
+                Number(existing.peso_kg || 0).toFixed(2) !== Number(newWeight).toFixed(2) ||
+                cleanExactString(existing.tipo_empaque) !== cleanExactString(newTipo) ||
+                (existing.tib_imagen_url || null) !== newImgUrl ||
+                (existing.tib_ticket_pdf_url || null) !== newTicketUrl);
+
+            if (isNew || isModified) {
+              let parsedDate = new Date().toISOString();
+              if (item.fecRegister) {
+                const d = new Date(item.fecRegister);
+                if (!isNaN(d.getTime())) parsedDate = d.toISOString();
+              }
+
+              const targetEmail = existing?.usuario_email || ADMIN_MASTER_EMAIL;
+              const recordObj: Record<string, any> = {
+                numero_recibo_bodega: canonicalWr,
+                tracking: newTracking,
+                nombre_consignatario: newConsignee,
+                usuario_email: targetEmail,
+                tipo_empaque: newTipo,
+                peso_kg: newWeight,
+                estado_tib: existing?.estado_tib || 'RECIBIDO',
+                estado_amex: 'en_almacen',
+                estado_visible: getEstadoVisiblePortal('en_almacen', existing?.estado_tib || 'RECIBIDO'),
+                tib_imagen_url: newImgUrl,
+                tib_ticket_pdf_url: newTicketUrl,
+                ubicacion_almacen: item.rack?.trim() || null,
+                creado_en: existing?.creado_en || parsedDate,
+                actualizado_en: new Date().toISOString(),
+              };
+
+              if (hasUsuarioIdColumn && targetEmail === ADMIN_MASTER_EMAIL && superadminId) {
+                recordObj.usuario_id = superadminId;
+              }
+
+              deltaRecordsToUpsert.push(recordObj);
+              if (newConsignee) affectedConsignees.add(cleanExactString(newConsignee));
+              if (existing?.nombre_consignatario) {
+                affectedConsignees.add(cleanExactString(existing.nombre_consignatario));
+              }
+            }
+          }
+
+          if (deltaRecordsToUpsert.length > 0) {
+            await portalAdmin
+              .from('paquetes_portal')
+              .upsert(deltaRecordsToUpsert, { onConflict: 'numero_recibo_bodega' });
+            updatedFromTibCount = deltaRecordsToUpsert.length;
+
+            // Recalcular conteos en amex_portal_clientes para los consignatarios modificados
+            for (const cName of affectedConsignees) {
+              if (!cName) continue;
+              const { data: cPkgs } = await portalAdmin
+                .from('paquetes_portal')
+                .select('numero_recibo_bodega, tracking, estado_tib, creado_en')
+                .eq('nombre_consignatario', cName)
+                .order('creado_en', { ascending: false });
+
+              if (cPkgs && cPkgs.length > 0) {
+                let recCount = 0;
+                let envCount = 0;
+                let entCount = 0;
+                for (const p of cPkgs) {
+                  const st = (p.estado_tib || '').toUpperCase();
+                  if (st === 'RECIBIDO') recCount++;
+                  else if (st === 'ENVIADO') envCount++;
+                  else if (st === 'ENTREGADO') entCount++;
+                }
+                await portalAdmin.from('amex_portal_clientes').upsert(
+                  {
+                    nombre: cName,
+                    total_paquetes: cPkgs.length,
+                    recibidos: recCount,
+                    enviados: envCount,
+                    entregados: entCount,
+                    ultimo_wr: cPkgs[0].numero_recibo_bodega,
+                    ultimo_tracking: cPkgs[0].tracking || null,
+                    ultima_fecha: cPkgs[0].creado_en,
+                    actualizado_en: new Date().toISOString(),
+                  },
+                  { onConflict: 'nombre' }
+                );
+              }
+            }
+          }
+        }
+      }
+    } catch (liveErr) {
+      console.warn('[syncTibPackagesToPortal] Aviso en sincronización delta RECIBIDO desde TIB:', liveErr);
+    }
+  }
 
   // 3. Determinar qué clientes regulares procesar (excluyendo todas las cuentas Superadmin)
   const regularClientsToProcess = clientesList.filter((c) => {
@@ -187,6 +340,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       success: true,
       count: linkedCount || 0,
       totalTib: totalTibCount || 0,
+      updatedFromTib: updatedFromTibCount,
     };
   }
 
@@ -194,6 +348,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     success: true,
     count: totalTibCount || 0,
     totalTib: totalTibCount || 0,
-    message: `Sincronización y cruce de clientes completado exitosamente (${(totalTibCount || 0).toLocaleString()} paquetes activos).`,
+    updatedFromTib: updatedFromTibCount,
+    message: `Sincronización y cruce de clientes completado exitosamente (${(totalTibCount || 0).toLocaleString()} paquetes activos, ${updatedFromTibCount} actualizados desde TIB).`,
   };
 }

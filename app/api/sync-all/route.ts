@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const { email } = await req.json().catch(() => ({ email: null }));
@@ -18,6 +20,7 @@ export async function POST(req: Request) {
       success: true,
       total_tib: syncRes.totalTib || 0,
       sincronizados: syncRes.count || 0,
+      actualizados_tib: syncRes.updatedFromTib || 0,
       message: syncRes.message || undefined,
     });
   } catch (err: any) {
