@@ -45,8 +45,6 @@ export async function PUT(req: Request) {
     const {
       id,
       nombre_completo,
-      telefono,
-      documento_identidad,
       casillero_codigo,
       alias_palabras_clave,
       activo,
@@ -110,8 +108,6 @@ export async function PUT(req: Request) {
       actualizado_en: new Date().toISOString(),
     };
 
-    if (telefono !== undefined) updatePayload.telefono = telefono ? String(telefono).trim() : null;
-    if (documento_identidad !== undefined) updatePayload.documento_identidad = documento_identidad ? String(documento_identidad).trim() : null;
     if (casillero_codigo !== undefined) updatePayload.casillero_codigo = casillero_codigo ? String(casillero_codigo).trim() : null;
     if (activo !== undefined) updatePayload.activo = Boolean(activo);
 

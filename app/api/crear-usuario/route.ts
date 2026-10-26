@@ -10,8 +10,6 @@ export async function POST(req: Request) {
     const {
       nombre_completo,
       email,
-      telefono,
-      documento_identidad,
       casillero_codigo,
       alias_palabras_clave,
     } = body;
@@ -59,8 +57,6 @@ export async function POST(req: Request) {
         redirectTo,
         data: {
           nombre_completo: cleanNombre,
-          telefono: telefono?.trim() || null,
-          documento_identidad: documento_identidad?.trim() || null,
           rol: 'cliente',
           password_establecido: false,
         },
@@ -105,8 +101,6 @@ export async function POST(req: Request) {
       id: newUserId,
       nombre_completo: cleanNombre,
       email: cleanEmail,
-      telefono: telefono?.trim() || null,
-      documento_identidad: documento_identidad?.trim() || null,
       casillero_codigo: casillero_codigo?.trim() || null,
       alias_palabras_clave: keywords,
       activo: true,
@@ -180,7 +174,6 @@ export async function POST(req: Request) {
         id: newUserId,
         email: cleanEmail,
         nombre_completo: cleanNombre,
-        telefono: telefono || null,
       },
       email_enviado: emailSent,
       email_error: emailError,
