@@ -73,15 +73,24 @@ export async function POST(req: Request) {
           q = q.eq('tipo_empaque', tipo.trim());
         }
         if (estado && typeof estado === 'string' && estado.trim()) {
-          const est = estado.trim();
-          q = q.or(`estado_tib.ilike.%${est}%,estado_visible.ilike.%${est}%`);
+          q = q.eq('estado_visible', estado.trim());
         }
         const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
         if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
-          q = q.gte(colFecha, new Date(`${fechaDesde.trim()}T00:00:00`).toISOString());
+          try {
+            const d = new Date(`${fechaDesde.trim()}T00:00:00`);
+            if (!isNaN(d.getTime())) {
+              q = q.gte(colFecha, d.toISOString());
+            }
+          } catch (_) {}
         }
         if (fechaHasta && typeof fechaHasta === 'string' && fechaHasta.trim()) {
-          q = q.lte(colFecha, new Date(`${fechaHasta.trim()}T23:59:59.999`).toISOString());
+          try {
+            const d = new Date(`${fechaHasta.trim()}T23:59:59.999`);
+            if (!isNaN(d.getTime())) {
+              q = q.lte(colFecha, d.toISOString());
+            }
+          } catch (_) {}
         }
         if (pesoMin !== undefined && pesoMin !== '' && !isNaN(Number(pesoMin))) {
           q = q.gte('peso_kg', Number(pesoMin));
@@ -90,11 +99,11 @@ export async function POST(req: Request) {
           q = q.lte('peso_kg', Number(pesoMax));
         }
       } else if (scope === 'recibido_miami') {
-        q = q.or('estado_tib.ilike.%recibido%,estado_visible.ilike.%recibido%');
+        q = q.eq('estado_visible', 'RECIBIDO');
       } else if (scope === 'en_transito') {
-        q = q.or('estado_tib.ilike.%enviado%,estado_visible.ilike.%enviado%,estado_visible.ilike.%vuelo%');
+        q = q.eq('estado_visible', 'ENVIADO');
       } else if (scope === 'entregado') {
-        q = q.or('estado_tib.ilike.%entregado%,estado_visible.ilike.%entregado%');
+        q = q.eq('estado_visible', 'ENTREGADO');
       }
       // scope === 'all' no aplica filtros adicionales
 

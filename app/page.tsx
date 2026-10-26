@@ -279,16 +279,23 @@ export default function ClienteDashboardTIB() {
         query = query.eq('tipo_empaque', activeTipo.trim());
       }
       if (activeEstado.trim()) {
-        const est = activeEstado.trim();
-        query = query.or(`estado_tib.ilike.%${est}%,estado_visible.ilike.%${est}%`);
+        query = query.eq('estado_visible', activeEstado.trim());
       }
       if (activeFechaDesde.trim()) {
-        const startIso = new Date(`${activeFechaDesde.trim()}T00:00:00`).toISOString();
-        query = query.gte(activeFechaTipo, startIso);
+        try {
+          const d = new Date(`${activeFechaDesde.trim()}T00:00:00`);
+          if (!isNaN(d.getTime())) {
+            query = query.gte(activeFechaTipo || 'creado_en', d.toISOString());
+          }
+        } catch (_) {}
       }
       if (activeFechaHasta.trim()) {
-        const endIso = new Date(`${activeFechaHasta.trim()}T23:59:59.999`).toISOString();
-        query = query.lte(activeFechaTipo, endIso);
+        try {
+          const d = new Date(`${activeFechaHasta.trim()}T23:59:59.999`);
+          if (!isNaN(d.getTime())) {
+            query = query.lte(activeFechaTipo || 'creado_en', d.toISOString());
+          }
+        } catch (_) {}
       }
       if (activePesoMin.trim() && !isNaN(Number(activePesoMin))) {
         query = query.gte('peso_kg', Number(activePesoMin));
@@ -323,8 +330,8 @@ export default function ClienteDashboardTIB() {
       if (!hasFilters) {
         setTotalSystemCount(countNum);
       }
-    } catch (err) {
-      console.error('Error fetching paquetes cliente:', err);
+    } catch (err: any) {
+      console.error('Error fetching paquetes cliente:', err?.message || err?.details || err?.hint || (typeof err === 'object' ? JSON.stringify(err) : err));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
