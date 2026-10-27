@@ -86,8 +86,15 @@ const SUPERADMIN_EMAILS = new Set([
   'gerencia@amexcourierperu.com',
 ]);
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
-const POLL_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES || '5', 10);
-const POLL_INTERVAL_MS = POLL_INTERVAL_MINUTES * 60 * 1000;
+// Cadencia Dual:
+// - Ciclo Express: Consulta RECIBIDOS cada 1 minuto (ultrarrápido, ~1s)
+// - Ciclo Completo: Consulta RECIBIDO + ENVIADO + ENTREGADO cada 15 ciclos (~15 min)
+const FAST_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES || '1', 10);
+const FAST_INTERVAL_MS = FAST_INTERVAL_MINUTES * 60 * 1000;
+const FULL_SWEEP_EVERY_N_CYCLES = parseInt(process.env.FULL_SWEEP_EVERY_N_CYCLES || '15', 10);
+let cycleCounter = 0;
+let isSyncRunning = false;
+const POLL_INTERVAL_MS = FAST_INTERVAL_MS;
 
 const sb = createClient(PORTAL_URL, PORTAL_SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -566,10 +573,17 @@ async function notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking)
 // 4. CICLO DE SINCRONIZACIÓN ESPEJO
 // -------------------------------------------------------------
 async function runMirrorSyncCycle() {
+  if (isSyncRunning) {
+    console.log('[TIB-MIRROR ⚠️] Ciclo anterior aún en curso. Omitiendo solapamiento.');
+    return;
+  }
+  isSyncRunning = true;
+  cycleCounter++;
+  const isFullSweep = isInitialRun || (cycleCounter % FULL_SWEEP_EVERY_N_CYCLES === 0);
   const cycleStart = Date.now();
   const timeStr = new Date().toLocaleTimeString('es-PE', { hour12: false });
   console.log(`\n======================================================`);
-  console.log(`[TIB-MIRROR 🔄 ${timeStr}] Iniciando ciclo de sincronización espejo...`);
+  console.log(`[TIB-MIRROR 🔄 ${timeStr}] Ciclo #${cycleCounter}: Sincronización ${isFullSweep ? 'COMPLETA (60k paquetes)' : 'EXPRESS RECIBIDOS (Miami)'}...`);
 
   try {
     // 0. Detectar dinámicamente si existe la columna híbrida usuario_id en paquetes_portal
@@ -632,17 +646,25 @@ async function runMirrorSyncCycle() {
       return (json.data || []).map((item) => ({ ...item, _fetchedStatus: status }));
     }
 
-    const [recibidos, enviados, entregados] = await Promise.all([
+    let orderedInput = [];
+    if (isFullSweep) {
+      const [recibidos, enviados, entregados] = await Promise.all([
       fetchTibStatus('RECIBIDO'),
       fetchTibStatus('ENVIADO'),
       fetchTibStatus('ENTREGADO'),
     ]);
 
-    console.log(`[TIB-MIRROR] TIB API reporta: ${recibidos.length} recibidos, ${enviados.length} enviados, ${entregados.length} entregados.`);
+      console.log(`[TIB-MIRROR] TIB API reporta (Completo): ${recibidos.length} recibidos, ${enviados.length} enviados, ${entregados.length} entregados.`);
+      orderedInput = [...recibidos, ...enviados, ...entregados];
+    } else {
+      const recibidos = await fetchTibStatus('RECIBIDO');
+      console.log(`[TIB-MIRROR] TIB API reporta (Express): ${recibidos.length} recibidos.`);
+      orderedInput = recibidos;
+    }
 
     // 3. Procesar respetando jerarquía: RECIBIDO (1) -> ENVIADO (2) -> ENTREGADO (3)
     const processedWrsMap = new Map();
-    const orderedInput = [...recibidos, ...enviados, ...entregados];
+    // orderedInput listo para procesar según modo express o completo
 
     for (const item of orderedInput) {
       const canonicalWr = normalizeTibWr(item.wr, item.seqwr);
@@ -947,10 +969,12 @@ async function runMirrorSyncCycle() {
     console.log(`[TIB-MIRROR ✅] Ciclo completado en ${elapsed}s.`);
     console.log(`  - Paquetes actualizados en Supabase: ${upsertedCount}`);
     console.log(`  - Alertas enviadas por email: ${sentEmailsCount}`);
-    console.log(`[TIB-MIRROR ⏳] Próximo ciclo en ${POLL_INTERVAL_MINUTES} minutos.`);
+    console.log(`[TIB-MIRROR ⏳] Próximo ciclo express en ${FAST_INTERVAL_MINUTES} minuto(s).`);
   } catch (err) {
     console.error(`[TIB-MIRROR ❌ Error]:`, err.message);
-    console.log(`[TIB-MIRROR ⏳] Reintentando en ${POLL_INTERVAL_MINUTES} minutos...`);
+    console.log(`[TIB-MIRROR ⏳] Reintentando en ${FAST_INTERVAL_MINUTES} minuto(s)...`);
+  } finally {
+    isSyncRunning = false;
   }
 }
 
@@ -959,7 +983,7 @@ async function runMirrorSyncCycle() {
 // -------------------------------------------------------------
 console.log(`======================================================`);
 console.log(`🚀 INICIANDO DEMONIO ESPEJO AMEX ⇄ TIB COURIER`);
-console.log(`Frecuencia de sincronización: Cada ${POLL_INTERVAL_MINUTES} minutos`);
+console.log(`Frecuencia: Express cada ${FAST_INTERVAL_MINUTES} min (RECIBIDO), Completo cada ${FULL_SWEEP_EVERY_N_CYCLES * FAST_INTERVAL_MINUTES} min`);
 console.log(`Base de datos destino: ${PORTAL_URL}`);
 console.log(`Servicio de correo: ${RESEND_FROM}`);
 console.log(`======================================================`);
