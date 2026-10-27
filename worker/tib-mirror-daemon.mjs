@@ -886,62 +886,14 @@ async function runMirrorSyncCycle() {
         );
 
         if (affectedConsignees.size > 0) {
-          const catalogStatsMap = new Map();
-
-          for (const [wr, entry] of processedWrsMap.entries()) {
-            const cName = cleanExactString(entry.record.nombre_consignatario);
-            if (!cName || !affectedConsignees.has(cName)) continue;
-
-            if (!catalogStatsMap.has(cName)) {
-              catalogStatsMap.set(cName, {
-                nombre: cName,
-                iclient: entry.rawItem?.iclient || null,
-                total_paquetes: 0,
-                recibidos: 0,
-                eniviados: 0,
-                entregados: 0,
-                ultimo_wr: wr,
-                ultimo_tracking: entry.record.tracking || null,
-                ultima_fecha: entry.rawItem?.fecRegister || entry.record.creado_en,
-                email: entry.rawItem?.emailClient || null,
-                actualizado_en: new Date().toISOString(),
-              });
-            }
-
-            const stat = catalogStatsMap.get(cName);
-            stat.total_paquetes++;
-            if (entry.statusTib === 'RECIBIDO') stat.recibidos++;
-            else if (entry.statusTib === 'ENVIADO') stat.eniviados++;
-            else if (entry.statusTib === 'ENTREGADO') stat.entregados++;
-            stat.ultimo_wr = wr;
-            if (entry.record.tracking) stat.ultimo_tracking = entry.record.tracking;
-          }
-
-          const catalogUpdates = Array.from(catalogStatsMap.values()).map((s) => ({
-            nombre: s.nombre,
-            iclient: s.iclient,
-            total_paquetes: s.total_paquetes,
-            recibidos: s.recibidos,
-            enviados: s.eniviados,
-            entregados: s.entregados,
-            ultimo_wr: s.ultimo_wr,
-            ultimo_tracking: s.ultimo_tracking,
-            ultima_fecha: s.ultima_fecha,
-            email: s.email,
-            actualizado_en: s.actualizado_en,
-          }));
-
-          if (catalogUpdates.length > 0) {
-            const { error: catErr } = await sb
-              .from('amex_portal_clientes')
-              .upsert(catalogUpdates, { onConflict: 'nombre' });
-
-            if (catErr) {
-              console.warn(`[TIB-MIRROR ⚠️] Aviso al actualizar catálogo amex_portal_clientes:`, catErr.message);
-            } else {
-              console.log(`[TIB-MIRROR 📊] Catálogo amex_portal_clientes actualizado para ${catalogUpdates.length} consignatario(s).`);
+          for (const cName of affectedConsignees) {
+            try {
+              await sb.rpc('recalcular_consignatario_catalogo', { target_nombre: cName });
+            } catch (rpcErr) {
+              console.warn(`[TIB-MIRROR ⚠️] Error al recalcular catálogo para ${cName}:`, rpcErr.message);
             }
           }
+          console.log(`[TIB-MIRROR 📊] Catálogo amex_portal_clientes recalculado exactamente para ${affectedConsignees.size} consignatario(s).`);
         }
       }
     }
