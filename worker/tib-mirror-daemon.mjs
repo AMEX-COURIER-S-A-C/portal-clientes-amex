@@ -290,7 +290,7 @@ async function notifyAdminNewPackage({ wr, tracking, consignatario, pesoKg, tipo
 /**
  * Notificación por correo con Resend al cliente cuando su paquete llega a Miami
  */
-async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl) {
+async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, consignatario) {
   if (!resend) {
     console.warn(`[NOTIFICACIÓN] Resend no configurado. Omitiendo email a ${email}`);
     return;
@@ -301,6 +301,7 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
     const pesoText = pesoKg != null && pesoKg > 0 ? `${Number(pesoKg).toFixed(2)} kg` : 'Por registrar';
     const tipoText = tipoEmpaque || 'Caja / Paquete';
     const portalUrl = 'https://clientes.sistemaamexcourier.online/clientes';
+    const cleanConsignee = consignatario || nombreCompleto;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -315,25 +316,39 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
       <td align="center">
         <table role="presentation" width="580" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.35); max-width: 580px; width: 100%;">
           <tr>
-            <td style="background: linear-gradient(135deg, #1e2229 0%, #0f172a 60%, #ff5722 100%); padding: 36px 30px; text-align: center; border-bottom: 3px solid #ff5722;">
-              <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="160" style="display: block; margin: 0 auto 14px auto;" />
+            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #ff5722 100%); padding: 36px 30px; text-align: center; border-bottom: 3px solid #ff5722;">
+              <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="160" style="display: block; margin: 0 auto 14px auto; max-width: 160px; height: auto;" />
               <span style="display: inline-block; background: rgba(255, 87, 34, 0.2); border: 1px solid rgba(255, 87, 34, 0.4); color: #ffccbc; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">
-                ✈️ Recepción en Miami • Casillero Virtual
+                📦 Recepción en Bodega Miami • Casillero Virtual AMEX
               </span>
-              <h1 style="color: #ffffff; margin: 0; font-size: 23px; font-weight: 900;">¡Tu paquete ya está en Miami!</h1>
-              <p style="color: #cbd5e1; margin: 8px 0 0 0; font-size: 13.5px;">Hemos recibido y registrado tu paquete en nuestro almacén para su próximo despacho a Lima.</p>
+              <h1 style="color: #ffffff; margin: 0; font-size: 23px; font-weight: 900; letter-spacing: -0.5px;">
+                ¡Tu paquete ya está en Miami!
+              </h1>
+              <p style="color: #cbd5e1; margin: 8px 0 0 0; font-size: 13.5px;">
+                Hemos recibido e ingresado tu compra en nuestro almacén para su próximo despacho a Lima.
+              </p>
             </td>
           </tr>
           <tr>
             <td style="padding: 32px 30px 24px 30px;">
-              <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155;">Hola <strong>${nombreCompleto}</strong>,</p>
-              <p style="margin: 0 0 20px 0; font-size: 14px; color: #475569;">Te confirmamos que tu compra o envío acaba de ingresar a nuestras instalaciones de Miami bajo el siguiente registro:</p>
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155; line-height: 1.5;">
+                Hola <strong>${nombreCompleto}</strong>,
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #475569; line-height: 1.6;">
+                Te confirmamos que acabamos de recibir e ingresar a tu casillero un nuevo paquete bajo el siguiente registro:
+              </p>
               
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px; overflow: hidden;">
                 <tr>
                   <td style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
                     <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Warehouse (WR)</span>
-                    <div style="font-size: 17px; font-weight: 900; color: #ff5722; font-family: monospace; margin-top: 2px;">${wr}</div>
+                    <div style="font-size: 18px; font-weight: 900; color: #ff5722; font-family: monospace; margin-top: 2px;">${wr}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Consignatario / Destinatario</span>
+                    <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 2px;">${cleanConsignee}</div>
                   </td>
                 </tr>
                 <tr>
@@ -343,18 +358,50 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 14px 20px;">
-                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Peso Registrado</span>
-                    <div style="font-size: 14px; font-weight: 800; color: #1e293b; margin-top: 2px;">${pesoText} (${tipoText})</div>
+                  <td style="padding: 14px 20px; ${fotoUrl ? 'border-bottom: 1px solid #e2e8f0;' : ''}">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Peso y Empaque</span>
+                    <div style="font-size: 14px; font-weight: 800; color: #1e293b; margin-top: 2px;">${pesoText} • ${tipoText}</div>
                   </td>
                 </tr>
+
+                ${fotoUrl ? `
+                <tr>
+                  <td style="padding: 18px 20px;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; display: block; margin-bottom: 8px;">
+                      📷 Evidencia Fotográfica en Almacén Miami
+                    </span>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                      ${fotoUrl.split(',').map((u) => u.trim()).filter(Boolean).map((u, i, arr) => `
+                        <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; text-align: center;">
+                          <a href="${u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')}" target="_blank" rel="noopener noreferrer" style="display: block; text-decoration: none;">
+                            <img src="${u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')}" alt="Foto ${wr} ${arr.length > 1 ? '(' + (i + 1) + '/' + arr.length + ')' : ''}" style="max-width: 100%; max-height: 240px; border-radius: 6px; display: block; margin: 0 auto; object-fit: contain; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" />
+                            <span style="display: inline-block; margin-top: 8px; font-size: 11.5px; font-weight: 700; color: #ea580c;">
+                              🔍 Clic aquí para ver foto ${arr.length > 1 ? (i + 1) : ''} en tamaño original →
+                            </span>
+                          </a>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </td>
+                </tr>
+                ` : ''}
               </table>
 
-              <div style="text-align: center; margin: 28px 0;">
-                <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 34px; font-size: 14.5px; font-weight: 800; color: #ffffff; background: linear-gradient(135deg, #ff5722 0%, #e64a19 100%); text-decoration: none; border-radius: 8px;">
-                  Ver Paquete en mi Portal →
+              <div style="text-align: center; margin: 28px 0 10px 0;">
+                <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 15px 36px; font-size: 14.5px; font-weight: 800; color: #ffffff; background: linear-gradient(135deg, #ff5722 0%, #e64a19 100%); text-decoration: none; border-radius: 8px; box-shadow: 0 4px 14px rgba(255, 87, 34, 0.35);">
+                  Ver en mi Portal de Clientes →
                 </a>
               </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8fafc; padding: 20px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0; font-size: 12px; font-weight: 700; color: #475569;">
+                AMEX Courier S.A.C. • Tu conexión directa Miami - Lima
+              </p>
+              <p style="margin: 4px 0 0 0; font-size: 11px; color: #94a3b8;">
+                Este es un mensaje automático de notificación de casillero. Si tienes consultas, escríbenos a soporte o contacta a tu asesor.
+              </p>
             </td>
           </tr>
         </table>
@@ -367,19 +414,16 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
     await resend.emails.send({
       from: RESEND_FROM,
       to: [email],
-      subject: `📦 ¡Tu paquete ha llegado a nuestro almacén de Miami! [${wr}]`,
+      subject: `📦 ¡Tu paquete ya está en Miami! [${wr}]${cleanConsignee ? ' - ' + cleanConsignee : ''}`,
       html: htmlContent,
     });
 
-    console.log(`[NOTIFICACIÓN ✅] Email 'RECIBIDO' enviado a ${email} para el paquete ${wr}`);
+    console.log(`[NOTIFICACIÓN ✅] Email 'RECIBIDO' enviado a ${email} para el paquete ${wr} (${cleanConsignee})`);
   } catch (err) {
     console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'RECIBIDO' a ${email}:`, err.message);
   }
 }
 
-/**
- * Notificación express por correo con Resend al cliente cuando su paquete va en vuelo a Lima (EN VUELO)
- */
 async function notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg) {
   if (!resend) {
     console.warn(`[NOTIFICACIÓN] Resend no configurado. Omitiendo email a ${email}`);
@@ -952,7 +996,7 @@ async function runMirrorSyncCycle() {
         const fotoUrl = entry.record.tib_imagen_url;
 
         if (type === 'RECIBIDO') {
-          await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl);
+          await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, entry.record.nombre_consignatario);
           sentEmailsCount++;
         } else if (type === 'ENVIADO') {
           await notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg);
