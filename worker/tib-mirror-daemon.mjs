@@ -979,13 +979,17 @@ async function runMirrorSyncCycle() {
           fecRegister,
         });
         sentEmailsCount++;
+
+        // Pausa breve entre alertas al admin para entrega fluida en Gmail
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       }
     }
 
-    // B) Alertas para clientes regulares registrados
+    // B) Alertas para clientes regulares registrados (con dosificación anti-ráfaga de Gmail)
     if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
-      console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes...`);
-      for (const item of clientCandidatesToNotify) {
+      console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes (con pausa anti-ráfaga)...`);
+      for (let i = 0; i < clientCandidatesToNotify.length; i++) {
+        const item = clientCandidatesToNotify[i];
         const { type, entry } = item;
         const email = entry.matchedEmail;
         const nombreCompleto = clientDetailsMap.get(email) || 'Cliente AMEX';
@@ -1004,6 +1008,14 @@ async function runMirrorSyncCycle() {
         } else if (type === 'ENTREGADO') {
           await notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking);
           sentEmailsCount++;
+        }
+
+        // Alternativa A: Dosificación inteligente para evitar greylisting / pausas de recepción de Gmail
+        if (i < clientCandidatesToNotify.length - 1) {
+          const nextEmail = clientCandidatesToNotify[i + 1]?.entry?.matchedEmail;
+          const isSameRecipient = nextEmail && nextEmail.toLowerCase() === (email || '').toLowerCase();
+          const pauseMs = isSameRecipient ? 2000 : 1200;
+          await new Promise((resolve) => setTimeout(resolve, pauseMs));
         }
       }
     }
