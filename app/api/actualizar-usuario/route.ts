@@ -153,8 +153,39 @@ export async function PUT(req: Request) {
           }
         }
 
-        // Vincular paquetes en el inventario
+        // Vincular paquetes en el inventario y desvincular palabras clave eliminadas
         if (validKeywords.length > 0) {
+          // 1. Desvincular cualquier paquete de este cliente que ya no coincida con sus palabras clave actuales
+          const { data: currentAssigned } = await portalAdmin
+            .from('paquetes_portal')
+            .select('id, nombre_consignatario')
+            .eq('usuario_email', clientEmail);
+
+          if (currentAssigned && currentAssigned.length > 0) {
+            const orphanedIds: number[] = [];
+            for (const pkg of currentAssigned) {
+              const cName = (pkg.nombre_consignatario || '').toUpperCase();
+              const matchesAny = validKeywords.some((kw) => cName.includes(kw.toUpperCase()));
+              if (!matchesAny) {
+                orphanedIds.push(pkg.id);
+              }
+            }
+
+            if (orphanedIds.length > 0) {
+              for (let i = 0; i < orphanedIds.length; i += 500) {
+                const chunk = orphanedIds.slice(i, i + 500);
+                await portalAdmin
+                  .from('paquetes_portal')
+                  .update({
+                    usuario_email: ADMIN_MASTER_EMAIL,
+                    actualizado_en: new Date().toISOString(),
+                  })
+                  .in('id', chunk);
+              }
+            }
+          }
+
+          // 2. Asignar los paquetes que coinciden con las palabras clave vigentes
           for (const kw of validKeywords) {
             await portalAdmin
               .from('paquetes_portal')

@@ -63,14 +63,11 @@ export function applyClientScopeFilter(query: any, info: ClientKeywordsInfo): an
   }
 
   if (info.keywords.length > 0) {
-    const conditions = [
-      `usuario_email.eq.${info.cleanEmail}`,
-      ...info.keywords.map((kw) => {
-        // Sanitizar caracteres especiales para la sintaxis de PostgREST
-        const safeKw = kw.replace(/["'(),]/g, '').trim();
-        return `nombre_consignatario.ilike.*${safeKw}*`;
-      }),
-    ];
+    const conditions = info.keywords.map((kw) => {
+      // Sanitizar caracteres especiales para la sintaxis de PostgREST
+      const safeKw = kw.replace(/["'(),]/g, '').trim();
+      return `nombre_consignatario.ilike.*${safeKw}*`;
+    });
     return query.or(conditions.join(','));
   }
 
