@@ -18,17 +18,6 @@ export interface PaqueteSyncData {
 }
 
 /**
- * Calcula el texto de estado que verá el cliente en su panel
- */
-export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: string | null): string {
-  const normTib = (estadoTib || '').toUpperCase();
-  if (normTib === 'ENTREGADO' || estadoAmex === 'entregado') return 'ENTREGADO';
-  if (normTib === 'ENVIADO') return 'ENVIADO';
-  if (normTib === 'RECIBIDO') return 'RECIBIDO';
-  return normTib || 'RECIBIDO';
-}
-
-/**
  * Sincroniza uno o varios paquetes hacia la base de datos exclusiva del Portal de Clientes (us-west-2 Oregon).
  * Asigna automáticamente el usuario_email buscando coincidencias en clientes_portal por nombre o alias.
  */
@@ -117,7 +106,6 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
         peso_kg: pkg.peso_kg != null ? Number(pkg.peso_kg) : 0,
         estado_tib: pkg.estado_tib || 'RECIBIDO',
         estado_amex: pkg.estado_amex || 'en_almacen',
-        estado_visible: getEstadoVisiblePortal(pkg.estado_amex, pkg.estado_tib),
         tib_imagen_url: pkg.tib_imagen_url || null,
         tib_ticket_pdf_url: pkg.tib_ticket_pdf_url || null,
         ubicacion_almacen: pkg.ubicacion_almacen || null,

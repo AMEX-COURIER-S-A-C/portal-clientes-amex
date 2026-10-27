@@ -47,7 +47,6 @@ interface PaqueteTIB {
   peso_kg: number | null;
   estado_tib: string | null;
   estado_amex: string | null;
-  estado_visible?: string | null;
   tib_imagen_url: string | null;
   tib_ticket_pdf_url: string | null;
   creado_en: string;
@@ -983,14 +982,7 @@ export default function ClienteDashboardTIB() {
 
   // Texto exacto del estado según la información extraída de TIB
   const getEstadoTexto = (pkg: PaqueteTIB) => {
-    if (pkg.estado_tib) return pkg.estado_tib.toUpperCase();
-    if (pkg.estado_visible) {
-      const v = pkg.estado_visible.toUpperCase();
-      if (v === 'RECIBIDO MIAMI') return 'RECIBIDO';
-      if (v === 'EN VUELO') return 'ENVIADO';
-      return v;
-    }
-    return 'RECIBIDO';
+    return (pkg.estado_tib || 'RECIBIDO').toUpperCase();
   };
 
   // Pantalla de carga mientras se valida la autenticación para evitar cualquier parpadeo de contenido no autenticado

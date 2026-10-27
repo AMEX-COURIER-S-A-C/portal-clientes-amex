@@ -72,7 +72,7 @@ export async function POST(req: Request) {
         q = q.eq('tipo_empaque', tipo.trim());
       }
       if (estado && typeof estado === 'string' && estado.trim()) {
-        q = q.eq('estado_visible', estado.trim());
+        q = q.eq('estado_tib', estado.trim().toUpperCase());
       }
       const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
       if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
@@ -116,7 +116,6 @@ export async function POST(req: Request) {
         peso_kg,
         estado_tib,
         estado_amex,
-        estado_visible,
         tib_imagen_url,
         tib_ticket_pdf_url,
         creado_en,

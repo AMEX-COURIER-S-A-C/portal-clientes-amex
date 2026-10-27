@@ -20,7 +20,7 @@ export async function GET(req: Request) {
       const [pkgsRes, profileRes] = await Promise.all([
         supabase
           .from('paquetes_portal')
-          .select('nombre_consignatario, estado_tib, estado_visible')
+          .select('nombre_consignatario, estado_tib')
           .eq('usuario_email', email),
         supabase
           .from('clientes_portal')
@@ -60,10 +60,14 @@ export async function GET(req: Request) {
         }
         const entry = statsMap.get(name)!;
         entry.total_paquetes++;
-        const st = (row.estado_tib || row.estado_visible || '').toUpperCase();
-        if (st === 'RECIBIDO') entry.recibidos++;
-        else if (st === 'ENVIADO') entry.enviados++;
-        else if (st === 'ENTREGADO') entry.entregados++;
+        const tib = (row.estado_tib || 'RECIBIDO').toUpperCase();
+        if (tib === 'RECIBIDO') {
+          entry.recibidos++;
+        } else if (tib === 'ENVIADO') {
+          entry.enviados++;
+        } else if (tib === 'ENTREGADO') {
+          entry.entregados++;
+        }
       }
 
       // Incluir también alias configurados en su perfil aunque aún tengan 0 paquetes

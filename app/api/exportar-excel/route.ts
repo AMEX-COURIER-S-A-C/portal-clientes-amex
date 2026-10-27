@@ -46,7 +46,6 @@ export async function POST(req: Request) {
           nombre_consignatario,
           tipo_empaque,
           peso_kg,
-          estado_visible,
           estado_tib,
           estado_amex,
           creado_en,
@@ -74,7 +73,7 @@ export async function POST(req: Request) {
           q = q.eq('tipo_empaque', tipo.trim());
         }
         if (estado && typeof estado === 'string' && estado.trim()) {
-          q = q.eq('estado_visible', estado.trim());
+          q = q.eq('estado_tib', estado.trim().toUpperCase());
         }
         const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
         if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
@@ -100,11 +99,11 @@ export async function POST(req: Request) {
           q = q.lte('peso_kg', Number(pesoMax));
         }
       } else if (scope === 'recibido_miami') {
-        q = q.eq('estado_visible', 'RECIBIDO');
+        q = q.eq('estado_tib', 'RECIBIDO');
       } else if (scope === 'en_transito') {
-        q = q.eq('estado_visible', 'ENVIADO');
+        q = q.eq('estado_tib', 'ENVIADO');
       } else if (scope === 'entregado') {
-        q = q.eq('estado_visible', 'ENTREGADO');
+        q = q.eq('estado_tib', 'ENTREGADO');
       }
       // scope === 'all' no aplica filtros adicionales
 
@@ -177,7 +176,9 @@ export async function POST(req: Request) {
       },
       {
         header: { value: 'Estado', fontWeight: 'bold' as const },
-        cell: (p: any) => ({ value: p.estado_tib || p.estado_visible || 'RECIBIDO' }),
+        cell: (p: any) => ({
+          value: p.estado_tib || 'RECIBIDO',
+        }),
         width: 20,
       },
       {

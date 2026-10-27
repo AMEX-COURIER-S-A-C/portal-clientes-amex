@@ -25,7 +25,6 @@ export async function GET(req: NextRequest) {
         peso_kg,
         estado_tib,
         estado_amex,
-        estado_visible,
         tib_imagen_url,
         tib_ticket_pdf_url,
         ubicacion_almacen,
@@ -54,7 +53,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      paquete: data,
+      paquete: {
+        ...data,
+        estado: data.estado_tib || 'RECIBIDO',
+      },
     });
   } catch (err: any) {
     console.error('[API Tracking Server Error]', err);

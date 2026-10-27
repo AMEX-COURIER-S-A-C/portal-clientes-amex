@@ -711,7 +711,6 @@ async function runMirrorSyncCycle() {
         peso_kg: isNaN(weightNum) ? 0 : weightNum,
         estado_tib: statusTib,
         estado_amex: 'en_almacen',
-        estado_visible: getEstadoVisiblePortal('en_almacen', statusTib),
         tib_imagen_url: fullImgUrl,
         tib_ticket_pdf_url: fullTicketUrl,
         ubicacion_almacen: item.rack?.trim() || null,

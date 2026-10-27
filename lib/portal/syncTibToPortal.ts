@@ -172,7 +172,6 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
                 peso_kg: newWeight,
                 estado_tib: existing?.estado_tib || 'RECIBIDO',
                 estado_amex: 'en_almacen',
-                estado_visible: getEstadoVisiblePortal('en_almacen', existing?.estado_tib || 'RECIBIDO'),
                 tib_imagen_url: newImgUrl,
                 tib_ticket_pdf_url: newTicketUrl,
                 ubicacion_almacen: item.rack?.trim() || null,
