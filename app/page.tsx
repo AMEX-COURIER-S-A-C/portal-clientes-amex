@@ -223,9 +223,10 @@ export default function ClienteDashboardTIB() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, onlySystemCount: true }),
-      });
-      if (res.ok) {
-        const json = await res.json();
+      }).catch(() => null);
+      if (res && res.ok) {
+        const json = await res.json().catch(() => null);
+        if (!json) return;
         if (typeof json.systemCount === 'number') {
           setTotalSystemCount(json.systemCount);
           return;
@@ -315,9 +316,14 @@ export default function ClienteDashboardTIB() {
             pesoMax: activePesoMax,
           },
         }),
-      });
+      }).catch(() => null);
 
-      const json = await res.json();
+      if (!res) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json.error || 'Error al consultar paquetes');
       }
@@ -395,10 +401,10 @@ export default function ClienteDashboardTIB() {
   const fetchClientsList = useCallback(async () => {
     setIsLoadingClients(true);
     try {
-      const res = await fetch('/api/listar-portal');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.clientes) {
+      const res = await fetch('/api/listar-portal').catch(() => null);
+      if (res && res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json?.clientes) {
           setClientsList(json.clientes);
           return;
         }
@@ -411,7 +417,7 @@ export default function ClienteDashboardTIB() {
       if (error) throw error;
       setClientsList(data || []);
     } catch (err) {
-      console.error('Error al cargar clientes_portal:', err);
+      console.warn('Aviso al cargar clientes_portal:', err);
     } finally {
       setIsLoadingClients(false);
     }
