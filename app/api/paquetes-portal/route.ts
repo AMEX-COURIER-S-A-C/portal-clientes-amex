@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +21,8 @@ export async function POST(req: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const isSuperadmin = isSuperadminEmail(cleanEmail);
     const portalAdmin = getPortalAdmin();
+    const clientInfo = await getClientKeywords(portalAdmin, cleanEmail);
 
     // Si solo se solicita el conteo total del sistema/cliente (sin filtros)
     if (onlySystemCount) {
@@ -29,9 +30,7 @@ export async function POST(req: Request) {
         .from('paquetes_portal')
         .select('id', { count: 'exact', head: true });
 
-      if (!isSuperadmin) {
-        sysQuery = sysQuery.eq('usuario_email', cleanEmail);
-      }
+      sysQuery = applyClientScopeFilter(sysQuery, clientInfo);
 
       const { count, error } = await sysQuery;
       if (error) throw error;
@@ -56,9 +55,8 @@ export async function POST(req: Request) {
     } = filters;
 
     const applyFilters = (q: any) => {
-      if (!isSuperadmin) {
-        q = q.eq('usuario_email', cleanEmail);
-      }
+      q = applyClientScopeFilter(q, clientInfo);
+
       if (wr && typeof wr === 'string' && wr.trim()) {
         q = q.ilike('numero_recibo_bodega', `%${wr.trim()}%`);
       }

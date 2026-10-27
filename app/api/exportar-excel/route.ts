@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 import writeXlsxFile from 'write-excel-file/node';
 
 export const dynamic = 'force-dynamic';
@@ -33,8 +34,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Usuario no autenticado' }, { status: 401 });
     }
 
-    const isSuperadmin = isSuperadminEmail(email);
+    const cleanEmail = String(email).trim().toLowerCase();
     const portalAdmin = getPortalAdmin();
+    const clientInfo = await getClientKeywords(portalAdmin, cleanEmail);
 
     // Función constructora de consulta base para paginar de a 1,000 registros
     const createScopedQuery = () => {
@@ -52,10 +54,8 @@ export async function POST(req: Request) {
           actualizado_en
         `);
 
-      // Control de roles estricto: los clientes solo pueden ver y exportar sus propios paquetes
-      if (!isSuperadmin) {
-        q = q.eq('usuario_email', email);
-      }
+      // Control de roles dinámico y multi-cuenta por palabras clave
+      q = applyClientScopeFilter(q, clientInfo);
 
       // Aplicar lógica según el alcance (scope)
       if (scope === 'filtered') {

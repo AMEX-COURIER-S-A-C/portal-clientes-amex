@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +18,16 @@ export async function GET(req: Request) {
 
     // Si es un cliente regular, devolver únicamente sus propios consignatarios asignados y sus conteos reales
     if (isRegularClient) {
+      const clientInfo = await getClientKeywords(supabase, email);
+
+      let pkgsQuery = supabase
+        .from('paquetes_portal')
+        .select('nombre_consignatario, estado_tib');
+
+      pkgsQuery = applyClientScopeFilter(pkgsQuery, clientInfo);
+
       const [pkgsRes, profileRes] = await Promise.all([
-        supabase
-          .from('paquetes_portal')
-          .select('nombre_consignatario, estado_tib')
-          .eq('usuario_email', email),
+        pkgsQuery,
         supabase
           .from('clientes_portal')
           .select('nombre_completo, alias_palabras_clave')

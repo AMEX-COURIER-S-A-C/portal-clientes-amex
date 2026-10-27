@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
 import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
+import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
 export async function GET(req: Request) {
   try {
@@ -27,14 +28,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
-    // Contar cuántos paquetes tiene actualmente en paquetes_portal
+    // Contar cuántos paquetes tiene actualmente en paquetes_portal usando el filtro dinámico
+    const clientInfo = await getClientKeywords(portalAdmin, client.email);
     let countQuery = portalAdmin
       .from('paquetes_portal')
       .select('*', { count: 'exact', head: true });
 
-    if (!isSuperadminEmail(client.email)) {
-      countQuery = countQuery.eq('usuario_email', client.email.toLowerCase());
-    }
+    countQuery = applyClientScopeFilter(countQuery, clientInfo);
 
     const { count: paquetesCount } = await countQuery;
 
@@ -153,13 +153,7 @@ export async function PUT(req: Request) {
           }
         }
 
-        // Revertir primero los paquetes asignados previamente a este cliente al email del superadmin
-        await portalAdmin
-          .from('paquetes_portal')
-          .update({ usuario_email: ADMIN_MASTER_EMAIL })
-          .eq('usuario_email', clientEmail);
-
-        // Vincular todos los paquetes que contengan o coincidan con cualquiera de las palabras clave
+        // Vincular paquetes en el inventario
         if (validKeywords.length > 0) {
           for (const kw of validKeywords) {
             await portalAdmin
@@ -179,11 +173,14 @@ export async function PUT(req: Request) {
           }
         }
 
-        // Contar el total de paquetes ahora vinculados a este cliente
-        const { count: finalCount } = await portalAdmin
+        // Contar el total de paquetes vinculados a este cliente (usando el filtro dinámico multi-cuenta)
+        const updatedClientInfo = await getClientKeywords(portalAdmin, clientEmail);
+        let finalCountQuery = portalAdmin
           .from('paquetes_portal')
-          .select('id', { count: 'exact', head: true })
-          .eq('usuario_email', clientEmail);
+          .select('id', { count: 'exact', head: true });
+
+        finalCountQuery = applyClientScopeFilter(finalCountQuery, updatedClientInfo);
+        const { count: finalCount } = await finalCountQuery;
 
         totalLinked = finalCount || 0;
       } else {

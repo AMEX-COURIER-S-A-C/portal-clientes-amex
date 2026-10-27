@@ -645,11 +645,16 @@ async function runMirrorSyncCycle() {
 
     if (cErr) throw new Error(`Fallo al leer clientes_portal: ${cErr.message}`);
 
-    const nclientExactMap = new Map();
-    const iclientMap = new Map();
-    const clientDetailsMap = new Map();
-    const clientIdMap = new Map();
-    const keywordInclusionList = [];
+    const nclientExactMap = new Map(); // cleanConsignee -> Set<email>
+    const iclientMap = new Map();       // cleanIclient -> Set<email>
+    const clientDetailsMap = new Map(); // email -> name
+    const clientIdMap = new Map();      // email -> id
+    const keywordInclusionList = [];    // { keyword, email }
+
+    function addExactMapping(map, key, email) {
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(email);
+    }
 
     for (const c of clientes || []) {
       const email = c.email.trim().toLowerCase();
@@ -659,7 +664,7 @@ async function runMirrorSyncCycle() {
 
       const cleanNombre = cleanExactString(c.nombre_completo);
       if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX') {
-        nclientExactMap.set(cleanNombre, email);
+        addExactMapping(nclientExactMap, cleanNombre, email);
         keywordInclusionList.push({ keyword: cleanNombre, email });
       }
 
@@ -667,7 +672,7 @@ async function runMirrorSyncCycle() {
         for (const alias of c.alias_palabras_clave) {
           const cleanAlias = cleanExactString(alias);
           if (cleanAlias && cleanAlias.length >= 2 && cleanAlias !== 'AMEX') {
-            nclientExactMap.set(cleanAlias, email);
+            addExactMapping(nclientExactMap, cleanAlias, email);
             keywordInclusionList.push({ keyword: cleanAlias, email });
           }
         }
@@ -717,28 +722,30 @@ async function runMirrorSyncCycle() {
       const cleanConsignee = cleanExactString(item.nclient);
       const cleanIclient = cleanExactString(item.iclient);
 
-      let matchedEmail = undefined;
+      const matchedEmails = new Set();
 
-      // Regla 1: Coincidencia exacta o por inclusión de palabras clave con cliente regular
+      // Regla 1: Coincidencia exacta o por inclusión de palabras clave (soporta multi-cuenta compartida)
       if (cleanConsignee && nclientExactMap.has(cleanConsignee)) {
-        matchedEmail = nclientExactMap.get(cleanConsignee);
-      } else if (cleanIclient && iclientMap.has(cleanIclient)) {
-        matchedEmail = iclientMap.get(cleanIclient);
-      } else if (cleanConsignee) {
+        for (const e of nclientExactMap.get(cleanConsignee)) matchedEmails.add(e);
+      }
+      if (cleanIclient && iclientMap.has(cleanIclient)) {
+        for (const e of iclientMap.get(cleanIclient)) matchedEmails.add(e);
+      }
+      if (cleanConsignee) {
         for (const kwItem of keywordInclusionList) {
           if (cleanConsignee.includes(kwItem.keyword)) {
-            matchedEmail = kwItem.email;
-            break;
+            matchedEmails.add(kwItem.email);
           }
         }
       }
 
-      // Regla 2: Cualquier paquete no asignado a un cliente regular se asigna al Superadmin Master
-      if (!matchedEmail) {
-        matchedEmail = ADMIN_MASTER_EMAIL;
+      // Regla 2: Si no coincidió con ningún cliente regular, se asigna al Superadmin Master
+      if (matchedEmails.size === 0) {
+        matchedEmails.add(ADMIN_MASTER_EMAIL);
       }
 
-      if (!matchedEmail) continue;
+      const primaryEmail = Array.from(matchedEmails)[0];
+      const matchedEmail = primaryEmail;
 
       const statusTib = (item._fetchedStatus || item.status || 'RECIBIDO').toUpperCase();
       const currentPrio = STATUS_PRIORITY[statusTib] || 1;
@@ -793,7 +800,8 @@ async function runMirrorSyncCycle() {
         record: recordObj,
         priority: currentPrio,
         statusTib,
-        matchedEmail,
+        matchedEmail: primaryEmail,
+        matchedEmails,
         rawItem: item,
       });
     }
@@ -819,12 +827,19 @@ async function runMirrorSyncCycle() {
           // 1. Siempre notificar al Superadmin (sistemaamexcourier@gmail.com) cuando TIB registra un nuevo WR
           adminCandidatesToNotify.push(entry);
 
-          // 2. Si pertenece a un cliente regular registrado, notificar ÚNICAMENTE en estado RECIBIDO
-          if (entry.matchedEmail !== ADMIN_MASTER_EMAIL && entry.statusTib === 'RECIBIDO') {
-            clientCandidatesToNotify.push({
-              type: 'RECIBIDO',
-              entry,
-            });
+          // 2. Si pertenece a clientes regulares registrados, notificar a todas las cuentas que comparten la sigla
+          const emailsToNotify = entry.matchedEmails && entry.matchedEmails.size > 0
+            ? Array.from(entry.matchedEmails)
+            : [entry.matchedEmail];
+
+          for (const email of emailsToNotify) {
+            if (email !== ADMIN_MASTER_EMAIL && entry.statusTib === 'RECIBIDO') {
+              clientCandidatesToNotify.push({
+                type: 'RECIBIDO',
+                email,
+                entry,
+              });
+            }
           }
         }
       } else if (cachedStatus !== entry.statusTib) {
@@ -972,7 +987,7 @@ async function runMirrorSyncCycle() {
       for (let i = 0; i < clientCandidatesToNotify.length; i++) {
         const item = clientCandidatesToNotify[i];
         const { type, entry } = item;
-        const email = entry.matchedEmail;
+        const email = item.email || entry.matchedEmail;
         const nombreCompleto = clientDetailsMap.get(email) || 'Cliente AMEX';
         const wr = entry.record.numero_recibo_bodega;
         const tracking = entry.record.tracking;

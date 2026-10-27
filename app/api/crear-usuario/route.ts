@@ -4,6 +4,7 @@ import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibT
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
 import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
 export async function POST(req: Request) {
   try {
@@ -28,95 +29,109 @@ export async function POST(req: Request) {
 
     // Palabras clave para matching: guardar ÚNICAMENTE lo seleccionado/ingresado
     let keywords: string[] = [];
-    if (Array.isArray(alias_palabras_clave) && alias_palabras_clave.length > 0) {
-      alias_palabras_clave.forEach((k: string) => {
-        const trimmed = String(k).trim().toUpperCase();
-        if (trimmed && !keywords.includes(trimmed)) {
-          keywords.push(trimmed);
+
+    if (Array.isArray(alias_palabras_clave)) {
+      alias_palabras_clave.forEach((k: unknown) => {
+        const cleaned = cleanExactString(k);
+        if (cleaned && !keywords.includes(cleaned)) {
+          keywords.push(cleaned);
         }
       });
+    } else if (typeof alias_palabras_clave === 'string') {
+      alias_palabras_clave
+        .split(',')
+        .map((k) => cleanExactString(k))
+        .filter(Boolean)
+        .forEach((cleaned) => {
+          if (!keywords.includes(cleaned)) {
+            keywords.push(cleaned);
+          }
+        });
     }
 
-    // Solo si no se especificó ninguna palabra clave y es cliente regular, usar el nombre del formulario como respaldo
+    // Solo si no hay ninguna palabra clave definida, respaldar con el nombre
     if (keywords.length === 0 && cleanNombre && !isSuperadmin) {
       keywords.push(cleanNombre);
     }
 
     const portalAdmin = getPortalAdmin();
-    const baseUrl = getPortalBaseUrl(req);
-    const redirectTo = `${baseUrl}/establecer-password`;
 
-    // 1. Generar enlace de invitación y crear usuario en Supabase Auth (Oregon us-west-2)
-    // El Superadmin ya NO define contraseña; el usuario la establece desde el enlace recibido por correo.
-    let authUser: any = null;
-    let actionLink: string | null = null;
+    // 1. Verificar si ya existe en clientes_portal
+    const { data: existingClient } = await portalAdmin
+      .from('clientes_portal')
+      .select('id, email')
+      .eq('email', cleanEmail)
+      .maybeSingle();
 
-    const { data: inviteData, error: inviteErr } = await portalAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email: cleanEmail,
-      options: {
-        redirectTo,
-        data: {
-          nombre_completo: cleanNombre,
-          rol: isSuperadmin ? 'superadmin' : 'cliente',
-          is_superadmin: isSuperadmin,
-          password_establecido: false,
-        },
-      },
-    });
-
-    if (inviteErr) {
-      if (inviteErr.message.includes('already been registered') || inviteErr.message.includes('already registered')) {
-        // Si el usuario ya existía previamente en auth, generamos enlace de recuperación para establecer su contraseña
-        const { data: recoveryData, error: recoveryErr } = await portalAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: cleanEmail,
-          options: {
-            redirectTo,
-          },
-        });
-
-        if (recoveryErr) {
-          return NextResponse.json(
-            { error: `Este correo ya está registrado y no se pudo generar el enlace: ${recoveryErr.message}` },
-            { status: 400 }
-          );
-        }
-
-        authUser = recoveryData?.user;
-        actionLink = recoveryData?.properties?.action_link || null;
-      } else {
-        return NextResponse.json({ error: `Error de autenticación: ${inviteErr.message}` }, { status: 500 });
-      }
-    } else {
-      authUser = inviteData?.user;
-      actionLink = inviteData?.properties?.action_link || null;
+    if (existingClient) {
+      return NextResponse.json(
+        { error: `El correo ${cleanEmail} ya se encuentra registrado en el portal de clientes.` },
+        { status: 409 }
+      );
     }
 
-    const newUserId = authUser?.id;
-    if (!newUserId) {
-      return NextResponse.json({ error: 'No se pudo obtener el identificador de usuario creado.' }, { status: 500 });
+    // 2. Crear usuario en public.clientes_portal
+    const { data: newClient, error: clientDbError } = await portalAdmin
+      .from('clientes_portal')
+      .insert({
+        nombre_completo: cleanNombre,
+        email: cleanEmail,
+        alias_palabras_clave: keywords,
+        activo: true,
+      })
+      .select()
+      .single();
+
+    if (clientDbError || !newClient) {
+      console.error('[CrearCliente] Error al registrar en clientes_portal:', clientDbError);
+      return NextResponse.json(
+        { error: `Error al crear el perfil del cliente: ${clientDbError?.message || 'Error desconocido'}` },
+        { status: 500 }
+      );
     }
 
-    // 2. Registrar o actualizar en la tabla public.clientes_portal
-    const { error: profileErr } = await portalAdmin.from('clientes_portal').upsert({
-      id: newUserId,
-      nombre_completo: cleanNombre,
-      email: cleanEmail,
-      alias_palabras_clave: keywords,
-      activo: true,
-      actualizado_en: new Date().toISOString(),
-    });
+    const newUserId = newClient.id;
 
-    if (profileErr) {
-      console.error('[CrearCliente] Error al crear perfil clientes_portal:', profileErr);
-    }
-
-    // 3. Enviar correo de activación mediante Resend
+    // 3. Crear usuario en Supabase Auth y generar enlace seguro
+    let actionLink = '';
     let emailSent = false;
     let emailError: string | null = null;
 
-    if (actionLink) {
+    if (!isSuperadmin) {
+      const baseUrl = getPortalBaseUrl();
+      const redirectUrl = `${baseUrl}/establecer-password`;
+
+      const { data: authLinkData, error: authLinkError } = await portalAdmin.auth.admin.generateLink({
+        type: 'invite',
+        email: cleanEmail,
+        options: {
+          redirectTo: redirectUrl,
+          data: {
+            nombre_completo: cleanNombre,
+            es_cliente_portal: true,
+            id_cliente_portal: newUserId,
+          },
+        },
+      });
+
+      if (authLinkError || !authLinkData?.properties?.action_link) {
+        console.error('[CrearCliente] Error al generar link de invitación:', authLinkError);
+        const { error: recoveryError, data: recoveryData } = await portalAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: cleanEmail,
+          options: { redirectTo: redirectUrl },
+        });
+
+        if (recoveryError || !recoveryData?.properties?.action_link) {
+          console.error('[CrearCliente] Error alternativo al generar recovery link:', recoveryError);
+        } else {
+          actionLink = recoveryData.properties.action_link;
+        }
+      } else {
+        actionLink = authLinkData.properties.action_link;
+      }
+
+      // Enviar correo de activación mediante Resend
       const emailRes = await sendWelcomeClientEmail({
         email: cleanEmail,
         nombreCompleto: cleanNombre,
@@ -165,10 +180,13 @@ export async function POST(req: Request) {
           console.warn('[CrearCliente] Aviso al sincronizar paquetes desde TIB API:', tibErr);
         }
 
-        const { count: finalCount } = await portalAdmin
+        const createdClientInfo = await getClientKeywords(portalAdmin, cleanEmail);
+        let finalCountQuery = portalAdmin
           .from('paquetes_portal')
-          .select('id', { count: 'exact', head: true })
-          .eq('usuario_email', cleanEmail);
+          .select('id', { count: 'exact', head: true });
+
+        finalCountQuery = applyClientScopeFilter(finalCountQuery, createdClientInfo);
+        const { count: finalCount } = await finalCountQuery;
         totalLinked = finalCount || 0;
       } else {
         const { count: allCount } = await portalAdmin
