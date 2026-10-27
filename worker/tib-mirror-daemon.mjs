@@ -809,7 +809,6 @@ async function runMirrorSyncCycle() {
     // 4. Detección Inteligente de Cambios (Delta) y Transiciones de Estado:
     // Solo escribimos en la base de datos lo que es nuevo o lo que cambió de estado
     const recordsToUpsert = [];
-    const adminCandidatesToNotify = [];
     const clientCandidatesToNotify = [];
 
     for (const [canonicalWr, entry] of processedWrsMap.entries()) {
@@ -824,10 +823,7 @@ async function runMirrorSyncCycle() {
         daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
 
         if (!isInitialRun) {
-          // 1. Siempre notificar al Superadmin (sistemaamexcourier@gmail.com) cuando TIB registra un nuevo WR
-          adminCandidatesToNotify.push(entry);
-
-          // 2. Si pertenece a clientes regulares registrados, notificar a todas las cuentas que comparten la sigla
+          // Notificar únicamente a clientes regulares registrados cuando su paquete ingresa en RECIBIDO a Miami
           const emailsToNotify = entry.matchedEmails && entry.matchedEmails.size > 0
             ? Array.from(entry.matchedEmails)
             : [entry.matchedEmail];
@@ -898,42 +894,10 @@ async function runMirrorSyncCycle() {
       }
     }
 
-    // 6. Si hay candidatos a notificar y no es el ciclo inicial, despachar correos
+    // 6. Si hay candidatos a notificar y no es el ciclo inicial, despachar correos a clientes
     let sentEmailsCount = 0;
 
-    // A) Alertas de nuevo WR para el Superadmin (sistemaamexcourier@gmail.com)
-    if (adminCandidatesToNotify.length > 0 && !isInitialRun) {
-      console.log(`[TIB-MIRROR ✉️] Enviando ${adminCandidatesToNotify.length} alertas de nuevo WR al Superadmin (${ADMIN_MASTER_EMAIL})...`);
-      for (const entry of adminCandidatesToNotify) {
-        const wr = entry.record.numero_recibo_bodega;
-        const tracking = entry.record.tracking;
-        const consignatario = entry.record.nombre_consignatario;
-        const pesoKg = entry.record.peso_kg;
-        const tipoEmpaque = entry.record.tipo_empaque;
-        const fotoUrl = entry.record.tib_imagen_url;
-        const matchedEmail = entry.matchedEmail;
-        const clientName = clientDetailsMap.get(matchedEmail) || consignatario || 'Cliente AMEX';
-        const fecRegister = entry.rawItem?.fecRegister || null;
-
-        await notifyAdminNewPackage({
-          wr,
-          tracking,
-          consignatario,
-          pesoKg,
-          tipoEmpaque,
-          fotoUrl,
-          matchedEmail,
-          clientName,
-          fecRegister,
-        });
-        sentEmailsCount++;
-
-        // Pausa breve entre alertas al admin para entrega fluida en Gmail
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-      }
-    }
-
-    // B) Alertas para clientes regulares registrados (con dosificación anti-ráfaga de Gmail)
+    // Alertas exclusivamente para clientes regulares registrados (con dosificación anti-ráfaga de Gmail)
     if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
       console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes (con pausa anti-ráfaga)...`);
       for (let i = 0; i < clientCandidatesToNotify.length; i++) {
