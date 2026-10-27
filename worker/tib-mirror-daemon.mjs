@@ -819,10 +819,10 @@ async function runMirrorSyncCycle() {
           // 1. Siempre notificar al Superadmin (sistemaamexcourier@gmail.com) cuando TIB registra un nuevo WR
           adminCandidatesToNotify.push(entry);
 
-          // 2. Si pertenece a un cliente regular registrado, notificar también al cliente
-          if (entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
+          // 2. Si pertenece a un cliente regular registrado, notificar ÚNICAMENTE en estado RECIBIDO
+          if (entry.matchedEmail !== ADMIN_MASTER_EMAIL && entry.statusTib === 'RECIBIDO') {
             clientCandidatesToNotify.push({
-              type: entry.statusTib, // 'RECIBIDO' | 'ENVIADO' | 'ENTREGADO'
+              type: 'RECIBIDO',
               entry,
             });
           }
@@ -832,32 +832,13 @@ async function runMirrorSyncCycle() {
         recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
 
-        if (!isInitialRun && entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
-          if (entry.statusTib === 'ENVIADO') {
-            clientCandidatesToNotify.push({ type: 'ENVIADO', entry });
-          } else if (entry.statusTib === 'ENTREGADO') {
-            clientCandidatesToNotify.push({ type: 'ENTREGADO', entry });
-          }
-        }
+        // NOTA: Notificaciones por correo a clientes de ENVIADO y ENTREGADO deshabilitadas temporalmente por solicitud.
+        // La actualización en la base de datos se mantiene activa para que en el portal web siempre se vea el estado real.
       } else if (cachedFingerprint && cachedFingerprint !== currentFingerprint) {
         // WR existente cuyos datos fueron editados en TIB (ej. corrección de nombre_consignatario, peso, tracking o foto)
         console.log(`[TIB-MIRROR ✏️] Edición detectada en TIB para ${canonicalWr}: "${entry.record.nombre_consignatario}" (${entry.statusTib})`);
         recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
-      }
-      if (false) { {
-          if (entry.statusTib === 'ENVIADO') {
-            clientCandidatesToNotify.push({
-              type: 'ENVIADO',
-              entry,
-            });
-          } else if (entry.statusTib === 'ENTREGADO') {
-            clientCandidatesToNotify.push({
-              type: 'ENTREGADO',
-              entry,
-            });
-          }
-        }
       }
     }
 
