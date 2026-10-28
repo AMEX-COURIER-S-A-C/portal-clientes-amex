@@ -539,158 +539,96 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
 
       </div>
 
-      {/* 3. Gráfica de Tendencia Diaria de Uso y Búsquedas Principales */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '16px' }} className="grid grid-cols-1 lg:grid-cols-3">
-        
-        {/* Gráfico de Barras / Actividad Diaria (2 cols en Desktop) */}
-        <div className="lg:col-span-2" style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                Tendencia de Actividad Diaria
-              </h3>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-                Distribución cronológica de interacciones en los últimos {days} días.
-              </p>
-            </div>
-
-            {/* Leyenda de Colores */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', fontWeight: 600 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#3b82f6' }} />
-                <span style={{ color: '#475569' }}>Logins</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#10b981' }} />
-                <span style={{ color: '#475569' }}>Búsquedas</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f97316' }} />
-                <span style={{ color: '#475569' }}>Fotos</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#8b5cf6' }} />
-                <span style={{ color: '#475569' }}>Excels</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Gráfico Visual Responsivo */}
-          <div style={{ flex: 1, minHeight: '190px', display: 'flex', alignItems: 'flex-end', gap: '4px', paddingTop: '20px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9', overflowX: 'auto' }}>
-            {data?.tendencia_diaria && data.tendencia_diaria.length > 0 ? (
-              data.tendencia_diaria.map((d, idx) => {
-                const heightPct = Math.max(Math.min((d.total / maxBarValue) * 100, 100), d.total > 0 ? 8 : 2);
-                return (
-                  <div
-                    key={d.fecha}
-                    title={`${d.dia} (${d.fecha}):\n• Total: ${d.total}\n• Logins: ${d.logins}\n• Búsquedas: ${d.busquedas}\n• Fotos: ${d.fotos}\n• Excels: ${d.excels}`}
-                    style={{
-                      flex: 1,
-                      minWidth: days > 60 ? '12px' : '18px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      height: '100%',
-                      justifyContent: 'flex-end',
-                      cursor: 'pointer',
-                      position: 'relative',
-                    }}
-                  >
-                    {/* Barra apilada estilizada */}
-                    <div
-                      style={{
-                        width: '100%',
-                        height: `${heightPct}%`,
-                        borderRadius: '4px 4px 0 0',
-                        display: 'flex',
-                        flexDirection: 'column-reverse',
-                        backgroundColor: d.total === 0 ? '#f1f5f9' : 'transparent',
-                        overflow: 'hidden',
-                        transition: 'transform 0.15s ease',
-                      }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scaleY(1.05)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scaleY(1)'; }}
-                    >
-                      {d.logins > 0 && <div style={{ height: `${(d.logins / d.total) * 100}%`, backgroundColor: '#3b82f6' }} />}
-                      {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
-                      {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
-                      {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
-                    </div>
-
-                    {/* Etiqueta de fecha (cada N barras según cantidad de días) */}
-                    {(idx % (days > 30 ? 5 : 2) === 0 || idx === data.tendencia_diaria.length - 1) && (
-                      <span style={{ fontSize: '9.5px', color: '#94a3b8', marginTop: '6px', whiteSpace: 'nowrap' }}>
-                        {d.dia}
-                      </span>
-                    )}
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '13px', padding: '40px 0' }}>
-                Sin registros de actividad en este período.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Nube de Términos / Búsquedas Más Frecuentes (1 col) */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ marginBottom: '14px' }}>
+      {/* 3. Gráfica de Tendencia Diaria de Uso a Ancho Completo */}
+      <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px 22px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-              Términos Más Buscados
+              Tendencia de Actividad Diaria
             </h3>
             <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-              Números de WR y guías más consultados por los clientes.
+              Distribución cronológica de interacciones en los últimos {days} días.
             </p>
           </div>
 
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {data?.top_busquedas && data.top_busquedas.length > 0 ? (
-              data.top_busquedas.map((item, idx) => (
-                <div
-                  key={item.termino}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    backgroundColor: idx === 0 ? '#fff7ed' : '#f8fafc',
-                    border: `1px solid ${idx === 0 ? '#ffedd5' : '#f1f5f9'}`,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: idx === 0 ? '#c2410c' : '#64748b', width: '16px' }}>
-                      #{idx + 1}
-                    </span>
-                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.termino}
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      backgroundColor: idx === 0 ? '#ea580c' : '#e2e8f0',
-                      color: idx === 0 ? '#ffffff' : '#334155',
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {item.cantidad} {item.cantidad === 1 ? 'vez' : 'veces'}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '12px', padding: '30px 0' }}>
-                Aún no hay búsquedas registradas en el período.
-              </div>
-            )}
+          {/* Leyenda de Colores */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#3b82f6' }} />
+              <span style={{ color: '#475569' }}>Logins</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#10b981' }} />
+              <span style={{ color: '#475569' }}>Búsquedas</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f97316' }} />
+              <span style={{ color: '#475569' }}>Fotos</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#8b5cf6' }} />
+              <span style={{ color: '#475569' }}>Excels</span>
+            </div>
           </div>
         </div>
 
+        {/* Gráfico Visual Responsivo a Ancho Completo */}
+        <div style={{ flex: 1, minHeight: '190px', display: 'flex', alignItems: 'flex-end', gap: '4px', paddingTop: '20px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9', overflowX: 'auto' }}>
+          {data?.tendencia_diaria && data.tendencia_diaria.length > 0 ? (
+            data.tendencia_diaria.map((d, idx) => {
+              const heightPct = Math.max(Math.min((d.total / maxBarValue) * 100, 100), d.total > 0 ? 8 : 2);
+              return (
+                <div
+                  key={d.fecha}
+                  title={`${d.dia} (${d.fecha}):\n• Total: ${d.total}\n• Logins: ${d.logins}\n• Búsquedas: ${d.busquedas}\n• Fotos: ${d.fotos}\n• Excels: ${d.excels}`}
+                  style={{
+                    flex: 1,
+                    minWidth: days > 60 ? '12px' : '18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    height: '100%',
+                    justifyContent: 'flex-end',
+                    cursor: 'pointer',
+                    position: 'relative',
+                  }}
+                >
+                  {/* Barra apilada estilizada */}
+                  <div
+                    style={{
+                      width: '100%',
+                      height: `${heightPct}%`,
+                      borderRadius: '4px 4px 0 0',
+                      display: 'flex',
+                      flexDirection: 'column-reverse',
+                      backgroundColor: d.total === 0 ? '#f1f5f9' : 'transparent',
+                      overflow: 'hidden',
+                      transition: 'transform 0.15s ease',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scaleY(1.05)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scaleY(1)'; }}
+                  >
+                    {d.logins > 0 && <div style={{ height: `${(d.logins / d.total) * 100}%`, backgroundColor: '#3b82f6' }} />}
+                    {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
+                    {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
+                    {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
+                  </div>
+
+                  {/* Etiqueta de fecha */}
+                  {(idx % (days > 30 ? 5 : 2) === 0 || idx === data.tendencia_diaria.length - 1) && (
+                    <span style={{ fontSize: '9.5px', color: '#94a3b8', marginTop: '6px', whiteSpace: 'nowrap' }}>
+                      {d.dia}
+                    </span>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '13px', padding: '40px 0' }}>
+              Sin registros de actividad en este período.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 4. Tabla de Directorio Completo de Clientes y Auditoría de Uso */}
