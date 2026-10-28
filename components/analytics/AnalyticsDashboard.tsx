@@ -59,6 +59,7 @@ interface ClienteAnalitica {
   email: string;
   nombre_completo: string;
   activo: boolean;
+  es_admin?: boolean;
   alias_palabras_clave?: string[];
   creado_en: string;
   ultimo_acceso: string | null;
@@ -855,8 +856,19 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
 
                       {/* Paquetes Estimados */}
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#0369a1', backgroundColor: '#f0f9ff', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bae6fd' }}>
-                          {c.paquetes_estimados.toLocaleString()}
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: c.es_admin ? '#c2410c' : '#0369a1',
+                            backgroundColor: c.es_admin ? '#fff7ed' : '#f0f9ff',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${c.es_admin ? '#ffedd5' : '#bae6fd'}`,
+                          }}
+                          title={c.es_admin ? 'Acceso total absoluto al sistema' : undefined}
+                        >
+                          {c.paquetes_estimados.toLocaleString()} {c.es_admin ? '(Total)' : ''}
                         </span>
                       </td>
 

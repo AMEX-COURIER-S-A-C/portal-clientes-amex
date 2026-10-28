@@ -60,10 +60,18 @@ export async function GET(req: NextRequest) {
       if (u.email) authMap.set(u.email.toLowerCase(), u);
     });
 
-    // 3. Obtener conteo de paquetes por consignatario / catálogo
-    const { data: catalogData } = await portalAdmin
-      .from('amex_portal_clientes')
-      .select('nombre, total_paquetes, recibidos, enviados, entregados');
+    // 3. Obtener conteo de paquetes por consignatario / catálogo y total absoluto del sistema
+    const [catalogRes, systemCountRes] = await Promise.all([
+      portalAdmin
+        .from('amex_portal_clientes')
+        .select('nombre, total_paquetes, recibidos, enviados, entregados'),
+      portalAdmin
+        .from('paquetes_portal')
+        .select('id', { count: 'exact', head: true }),
+    ]);
+
+    const catalogData = catalogRes.data;
+    const totalPaquetesSistema = systemCountRes.count ?? 61246;
 
     const catalogMap = new Map<string, any>();
     (catalogData || []).forEach((c) => {
@@ -210,9 +218,13 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Calcular paquetes aproximados por sus palabras clave en el catálogo
+      // Calcular paquetes aproximados: si es Superadmin ve el 100% del sistema (61,246)
+      const esAdmin = isSuperadminEmail(c.email);
       let paquetesEstimados = 0;
-      if (Array.isArray(c.alias_palabras_clave)) {
+
+      if (esAdmin) {
+        paquetesEstimados = totalPaquetesSistema;
+      } else if (Array.isArray(c.alias_palabras_clave)) {
         for (const kw of c.alias_palabras_clave) {
           const cleanKw = (kw || '').toUpperCase().trim();
           for (const [catName, catRow] of catalogMap.entries()) {
@@ -230,6 +242,7 @@ export async function GET(req: NextRequest) {
         email: c.email,
         nombre_completo: c.nombre_completo,
         activo: c.activo,
+        es_admin: esAdmin,
         alias_palabras_clave: c.alias_palabras_clave,
         creado_en: c.creado_en,
         ultimo_acceso: ultimoAcceso,
