@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import { trackPortalEvent } from '@/lib/analytics/tracker';
 import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
 import { HalloweenBackdrop, HalloweenCornerWebs } from '@/components/themes/HalloweenBackdrop';
 
@@ -75,6 +76,13 @@ export default function ClienteLoginPage() {
           refresh_token: data.session.refresh_token,
         });
 
+        // Telemetria de login exitoso
+        trackPortalEvent({
+          usuario_email: cleanEmail,
+          tipo_evento: 'LOGIN_EXITOSO',
+          detalles: { metodo: 'api_auth_login' },
+        });
+
         setIsTransitioningIn(true);
         setTimeout(() => {
           router.push('/');
@@ -114,6 +122,13 @@ export default function ClienteLoginPage() {
             setIsLoading(false);
             return;
           }
+
+          // Telemetria de login exitoso
+          trackPortalEvent({
+            usuario_email: cleanEmail,
+            tipo_evento: 'LOGIN_EXITOSO',
+            detalles: { metodo: 'supabase_direct' },
+          });
 
           setIsTransitioningIn(true);
           setTimeout(() => {

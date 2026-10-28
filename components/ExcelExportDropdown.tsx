@@ -1,4 +1,5 @@
 'use client';
+import { trackPortalEvent } from '@/lib/analytics/tracker';
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -97,6 +98,13 @@ export default function ExcelExportDropdown({
       a.click();
       a.remove();
       window.URL.revokeObjectURL(downloadUrl);
+
+      // Telemetria no bloqueante de descarga Excel
+      trackPortalEvent({
+        usuario_email: userEmail || undefined,
+        tipo_evento: 'EXPORTAR_EXCEL',
+        detalles: { scope, filename },
+      });
     } catch (err: any) {
       console.error('Error al exportar inventario a Excel:', err);
       alert(err?.message || 'Ocurrió un error inesperado al descargar el archivo Excel.');

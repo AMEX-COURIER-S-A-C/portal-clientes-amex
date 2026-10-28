@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import ExcelExportDropdown from '@/components/ExcelExportDropdown';
+import { trackPortalEvent } from '@/lib/analytics/tracker';
+import AnalyticsDashboard from '@/components/analytics/AnalyticsDashboard';
 import { 
   Search, 
   RotateCw, 
@@ -33,6 +35,7 @@ import {
   ArrowRightLeft,
   SlidersHorizontal,
   Calendar,
+  BarChart3,
   Ban,
   UserCheck,
   UserX,
@@ -98,7 +101,7 @@ export default function ClienteDashboardTIB() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Navegación entre vistas principales para Superadmin
-  const [activeTab, setActiveTab] = useState<'warehouse' | 'configuracion'>('warehouse');
+  const [activeTab, setActiveTab] = useState<'warehouse' | 'configuracion' | 'analiticas'>('warehouse');
   const [clientSearchQuery, setClientSearchQuery] = useState('');
 
   // Filtros individuales estilo TIB
@@ -204,6 +207,8 @@ export default function ClienteDashboardTIB() {
       if (p === 'configuracion') {
         setActiveTab('configuracion');
         fetchClientsList();
+      } else if (p === 'analiticas') {
+        setActiveTab('analiticas');
       }
     }
 
@@ -944,6 +949,21 @@ export default function ClienteDashboardTIB() {
   const handleSearchClick = () => {
     setCurrentPage(1);
     fetchPaquetes(user?.email, 1);
+
+    const queryTerms = [filterWr, filterTracking, filterConsignatario].filter(Boolean).join(' | ');
+    if (queryTerms || filterEstado || filterTipo) {
+      trackPortalEvent({
+        usuario_email: user?.email,
+        tipo_evento: 'BUSQUEDA_INVENTARIO',
+        detalles: {
+          wr: filterWr.trim() || undefined,
+          tracking: filterTracking.trim() || undefined,
+          consignatario: filterConsignatario.trim() || undefined,
+          estado: filterEstado.trim() || undefined,
+          query: queryTerms,
+        },
+      });
+    }
   };
 
   // Paginación en servidor
@@ -1092,20 +1112,39 @@ export default function ClienteDashboardTIB() {
 
                     <button
                       onClick={() => {
-                        if (activeTab === 'configuracion') {
-                          setActiveTab('warehouse');
-                          if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=warehouse');
-                        } else {
-                          setActiveTab('configuracion');
-                          if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=configuracion');
-                        }
+                        setActiveTab('warehouse');
+                        if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=warehouse');
+                        setUserMenuOpen(false);
+                      }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: activeTab === 'warehouse' ? '#ff5722' : '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <Package style={{ width: '14px', height: '14px', color: '#ff5722' }} />
+                      <span>Listado Warehouse</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab('configuracion');
+                        if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=configuracion');
                         setUserMenuOpen(false);
                         fetchClientsList();
                       }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: activeTab === 'configuracion' ? '#ff5722' : '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
                       <Settings style={{ width: '14px', height: '14px', color: '#ff5722' }} />
-                      <span>{activeTab === 'configuracion' ? 'Volver a Listado Warehouse' : 'Panel de Configuración'}</span>
+                      <span>Panel de Configuración</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab('analiticas');
+                        if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=analiticas');
+                        setUserMenuOpen(false);
+                      }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: activeTab === 'analiticas' ? '#ff5722' : '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <BarChart3 style={{ width: '14px', height: '14px', color: '#ff5722' }} />
+                      <span>Estadísticas y Analíticas</span>
                     </button>
 
 
@@ -1607,8 +1646,16 @@ export default function ClienteDashboardTIB() {
                   <select
                     value={filterEstado}
                     onChange={(e) => {
-                      setFilterEstado(e.target.value);
+                      const val = e.target.value;
+                      setFilterEstado(val);
                       setCurrentPage(1);
+                      if (val) {
+                        trackPortalEvent({
+                          usuario_email: user?.email,
+                          tipo_evento: 'FILTRO_ESTADO',
+                          detalles: { estado: val },
+                        });
+                      }
                     }}
                     style={{
                       width: '100%',
@@ -2156,7 +2203,14 @@ export default function ClienteDashboardTIB() {
                               {pkg.tib_imagen_url ? (
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
+                                  onClick={() => {
+                                    setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega });
+                                    trackPortalEvent({
+                                      usuario_email: user?.email,
+                                      tipo_evento: 'VER_FOTO_ALMACEN',
+                                      detalles: { wr: pkg.numero_recibo_bodega, url: pkg.tib_imagen_url },
+                                    });
+                                  }}
                                   style={{
                                     backgroundColor: '#fff7ed',
                                     color: '#c2410c',
@@ -2301,7 +2355,7 @@ export default function ClienteDashboardTIB() {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'configuracion' ? (
           /* ================= VISTA 2: PANEL DE CONFIGURACIÓN Y CLIENTES ================= */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
@@ -2344,6 +2398,28 @@ export default function ClienteDashboardTIB() {
                 >
                   <Package style={{ width: '14px', height: '14px', color: '#ff5722' }} />
                   <span>Volver a Listado Warehouse</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('analiticas'); if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=analiticas'); }}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <BarChart3 style={{ width: '14px', height: '14px', color: '#ff5722' }} />
+                  <span>Estadísticas de Uso</span>
                 </button>
               </div>
             </div>
@@ -3105,6 +3181,15 @@ export default function ClienteDashboardTIB() {
             </div>
 
           </div>
+        ) : (
+          /* ================= VISTA 3: ESTADÍSTICAS Y ANALÍTICAS EJECUTIVAS ================= */
+          <AnalyticsDashboard
+            adminEmail={user?.email || ''}
+            onBackToWarehouse={() => {
+              setActiveTab('warehouse');
+              if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=warehouse');
+            }}
+          />
         )}
 
       </main>
