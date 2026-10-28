@@ -36,3 +36,10 @@ body {
   color: var(--sap-text) !important;
   min-height: 100vh;
 }
+
+
+@keyframes indeterminateBar {
+  0% { left: 0%; width: 25%; }
+  50% { left: 35%; width: 45%; }
+  100% { left: 75%; width: 25%; }
+}

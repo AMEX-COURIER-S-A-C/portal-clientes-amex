@@ -97,7 +97,11 @@ export default function ClienteDashboardTIB() {
   const [totalSystemCount, setTotalSystemCount] = useState<number>(0);
   const [totalFilteredCount, setTotalFilteredCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const hasInitialDataLoaded = React.useRef(false);
+  const lastSearchedTextRef = React.useRef({ wr: '', tracking: '' });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Navegación entre vistas principales para Superadmin
@@ -289,7 +293,22 @@ export default function ClienteDashboardTIB() {
     }
   ) => {
     if (!email) return;
-    setIsLoading(true);
+
+    // 1. Cancelar cualquier peticion anterior en vuelo (evita cuellos de botella y desorden)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // 2. Si es la primera carga y no hay datos, mostrar loader principal.
+    // Si ya hay paquetes en pantalla, activar isSearching (no desmonta la tabla)
+    if (!hasInitialDataLoaded.current) {
+      setIsLoading(true);
+    } else {
+      setIsSearching(true);
+    }
+
     try {
       const current = latestFiltersRef.current;
       const activeWr = customFilters?.wr !== undefined ? customFilters.wr : current.wr;
@@ -306,6 +325,7 @@ export default function ClienteDashboardTIB() {
       const res = await fetch('/api/paquetes-portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           email,
           page,
@@ -323,11 +343,18 @@ export default function ClienteDashboardTIB() {
             pesoMax: activePesoMax,
           },
         }),
-      }).catch(() => null);
+      }).catch((err) => {
+        if (err?.name === 'AbortError') return null;
+        console.warn('Network error or abort:', err);
+        return null;
+      });
 
       if (!res) {
-        setIsLoading(false);
-        setIsRefreshing(false);
+        if (abortControllerRef.current === controller) {
+          setIsLoading(false);
+          setIsSearching(false);
+          setIsRefreshing(false);
+        }
         return;
       }
       const json = await res.json().catch(() => ({}));
@@ -337,6 +364,7 @@ export default function ClienteDashboardTIB() {
 
       const data = json.paquetes || [];
       setPaquetes(data);
+      hasInitialDataLoaded.current = true;
 
       const countNum = json.count ?? data.length;
       setTotalFilteredCount(countNum);
@@ -356,10 +384,17 @@ export default function ClienteDashboardTIB() {
         setTotalSystemCount(countNum);
       }
     } catch (err: any) {
-      console.error('Error fetching paquetes cliente:', err?.message || err?.details || err?.hint || (typeof err === 'object' ? JSON.stringify(err) : err));
+      if (err?.name === 'AbortError') {
+        // Peticion abortada silenciosamente por una nueva accion del usuario
+        return;
+      }
+      console.error('Error fetching paquetes cliente:', err?.message || err);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (abortControllerRef.current === controller) {
+        setIsLoading(false);
+        setIsSearching(false);
+        setIsRefreshing(false);
+      }
     }
   }, [itemsPerPage]);
 
@@ -507,19 +542,69 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Búsqueda y filtrado automático con debounce (solo cuando se selecciona un consignatario o cambian los filtros)
+  // Búsqueda y filtrado híbrido profesional (Opción 3):
+  // 1. Textos (# Warehouse / # Tracking):
+  //    - Si tienen 1 a 3 caracteres: NO buscan en segundo plano para evitar escaneos pesados e incompletos.
+  //    - Si tienen >= 4 caracteres: esperan 800ms antes de buscar automáticamente.
+  //    - Si se borran por completo: actualizan en 300ms para restaurar el listado completo.
+  // 2. Dropdowns / selectores / paginación: responden con debounce rápido (200ms).
   useEffect(() => {
     if (!user?.email) return;
     if (isInitialFilterMount.current) {
       isInitialFilterMount.current = false;
       return;
     }
-    const timer = setTimeout(() => {
-      fetchPaquetes(user.email, currentPage);
-    }, 350);
 
-    return () => clearTimeout(timer);
-  }, [user?.email, currentPage, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, filterFechaTipo, filterFechaDesde, filterFechaHasta, filterPesoMin, filterPesoMax, fetchPaquetes]);
+    const wrTrimmed = filterWr.trim();
+    const trkTrimmed = filterTracking.trim();
+    const prevWr = lastSearchedTextRef.current.wr;
+    const prevTrk = lastSearchedTextRef.current.tracking;
+
+    const textChanged = wrTrimmed !== prevWr || trkTrimmed !== prevTrk;
+
+    if (textChanged) {
+      // Caso A: Si el usuario escribió apenas 1, 2 o 3 caracteres, NO disparamos búsqueda masiva automática.
+      // (Esperamos a que escriba más o presione Enter / Buscar)
+      const hasShortIncompleteText =
+        (wrTrimmed.length > 0 && wrTrimmed.length < 4) ||
+        (trkTrimmed.length > 0 && trkTrimmed.length < 4);
+
+      if (hasShortIncompleteText) {
+        return;
+      }
+
+      // Caso B: El texto tiene 4 o más caracteres (ej. "4798", "479884") o se vació
+      const delay = (wrTrimmed.length >= 4 || trkTrimmed.length >= 4) ? 800 : 300;
+
+      const timer = setTimeout(() => {
+        lastSearchedTextRef.current = { wr: wrTrimmed, tracking: trkTrimmed };
+        fetchPaquetes(user.email, currentPage);
+      }, delay);
+
+      return () => clearTimeout(timer);
+    }
+
+    // Si lo que cambió fue un dropdown, fecha, peso o paginación (acciones discretas)
+    const dropdownTimer = setTimeout(() => {
+      fetchPaquetes(user.email, currentPage);
+    }, 200);
+
+    return () => clearTimeout(dropdownTimer);
+  }, [
+    user?.email,
+    currentPage,
+    filterWr,
+    filterTracking,
+    filterConsignatario,
+    filterTipo,
+    filterEstado,
+    filterFechaTipo,
+    filterFechaDesde,
+    filterFechaHasta,
+    filterPesoMin,
+    filterPesoMax,
+    fetchPaquetes,
+  ]);
 
   const handleLogout = async () => {
     await supabasePortal.auth.signOut();
@@ -948,6 +1033,7 @@ export default function ClienteDashboardTIB() {
 
   const handleSearchClick = () => {
     setCurrentPage(1);
+    lastSearchedTextRef.current = { wr: filterWr.trim(), tracking: filterTracking.trim() };
     fetchPaquetes(user?.email, 1);
 
     const queryTerms = [filterWr, filterTracking, filterConsignatario].filter(Boolean).join(' | ');
@@ -1683,9 +1769,10 @@ export default function ClienteDashboardTIB() {
                 <button
                   type="button"
                   onClick={handleSearchClick}
+                  disabled={isSearching}
                   className="w-auto"
                   style={{
-                    backgroundColor: '#1e2229',
+                    backgroundColor: isSearching ? '#374151' : '#1e2229',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: '6px',
@@ -1693,16 +1780,24 @@ export default function ClienteDashboardTIB() {
                     fontSize: '13px',
                     fontWeight: 700,
                     letterSpacing: '0.4px',
-                    cursor: 'pointer',
+                    cursor: isSearching ? 'not-allowed' : 'pointer',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
                     transition: 'all 0.15s ease',
                     textAlign: 'center',
                     justifyContent: 'center',
                     display: 'inline-flex',
                     alignItems: 'center',
+                    gap: '6px',
                   }}
                 >
-                  BUSCAR
+                  {isSearching ? (
+                    <>
+                      <RefreshCw style={{ width: '13px', height: '13px', animation: 'spin 1s linear infinite' }} />
+                      <span>BUSCANDO...</span>
+                    </>
+                  ) : (
+                    <span>BUSCAR</span>
+                  )}
                 </button>
 
                 <div className="w-auto">
@@ -2101,6 +2196,23 @@ export default function ClienteDashboardTIB() {
                 </span>
               </div>
 
+              {/* Barra sutil de progreso cuando se busca en segundo plano sin desmontar la tabla */}
+              {isSearching && (
+                <div style={{ height: '3px', width: '100%', backgroundColor: '#ffedd5', overflow: 'hidden', position: 'relative' }}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      backgroundColor: '#ff5722',
+                      borderRadius: '999px',
+                      animation: 'indeterminateBar 1s ease-in-out infinite alternate',
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Tabla completa estilo TIB accesible en todos los dispositivos con scroll horizontal */}
               <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
@@ -2120,9 +2232,9 @@ export default function ClienteDashboardTIB() {
                     </tr>
                   </thead>
 
-                  {/* Cuerpo de la tabla */}
-                  <tbody>
-                    {isLoading ? (
+                  {/* Cuerpo de la tabla con transicion suave de opacidad */}
+                  <tbody style={{ opacity: isSearching ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                    {isLoading && paquetes.length === 0 ? (
                       <tr>
                         <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
                           <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
