@@ -1106,16 +1106,7 @@ export default function ClienteDashboardTIB() {
                       <span>{activeTab === 'configuracion' ? 'Volver a Listado Warehouse' : 'Panel de Configuración'}</span>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        handleSyncAllFromTib();
-                      }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                    >
-                      <RefreshCw style={{ width: '14px', height: '14px', color: '#6b7280' }} />
-                      <span>Sincronizar con API TIB</span>
-                    </button>
+
                   </div>
                 )}
 
