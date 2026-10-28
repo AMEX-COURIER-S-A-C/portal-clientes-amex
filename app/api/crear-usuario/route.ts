@@ -70,29 +70,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Crear usuario en public.clientes_portal
-    const { data: newClient, error: clientDbError } = await portalAdmin
-      .from('clientes_portal')
-      .insert({
-        nombre_completo: cleanNombre,
-        email: cleanEmail,
-        alias_palabras_clave: keywords,
-        activo: true,
-      })
-      .select()
-      .single();
-
-    if (clientDbError || !newClient) {
-      console.error('[CrearCliente] Error al registrar en clientes_portal:', clientDbError);
-      return NextResponse.json(
-        { error: `Error al crear el perfil del cliente: ${clientDbError?.message || 'Error desconocido'}` },
-        { status: 500 }
-      );
-    }
-
-    const newUserId = newClient.id;
-
-    // 3. Crear usuario en Supabase Auth y generar enlace seguro
+    // 2. Crear usuario en Supabase Auth y generar enlace seguro
+    let authUserId: string | null = null;
     let actionLink = '';
     let emailSent = false;
     let emailError: string | null = null;
@@ -109,29 +88,55 @@ export async function POST(req: Request) {
           data: {
             nombre_completo: cleanNombre,
             es_cliente_portal: true,
-            id_cliente_portal: newUserId,
           },
         },
       });
 
       if (authLinkError || !authLinkData?.properties?.action_link) {
-        console.error('[CrearCliente] Error al generar link de invitación:', authLinkError);
+        console.warn('[CrearCliente] Falló generateLink invite, intentando recovery:', authLinkError?.message);
         const { error: recoveryError, data: recoveryData } = await portalAdmin.auth.admin.generateLink({
           type: 'recovery',
           email: cleanEmail,
           options: { redirectTo: redirectUrl },
         });
 
-        if (recoveryError || !recoveryData?.properties?.action_link) {
-          console.error('[CrearCliente] Error alternativo al generar recovery link:', recoveryError);
+        if (recoveryData?.user) {
+          authUserId = recoveryData.user.id;
+          actionLink = recoveryData.properties?.action_link || '';
         } else {
-          actionLink = recoveryData.properties.action_link;
+          console.error('[CrearCliente] Error alternativo al generar recovery link:', recoveryError);
         }
       } else {
+        authUserId = authLinkData.user?.id || null;
         actionLink = authLinkData.properties.action_link;
       }
+    }
 
-      // Enviar correo de activación mediante Resend
+    // 3. Crear usuario en public.clientes_portal asegurando ID no nulo
+    const finalUserId = authUserId || crypto.randomUUID();
+
+    const { data: newClient, error: clientDbError } = await portalAdmin
+      .from('clientes_portal')
+      .insert({
+        id: finalUserId,
+        nombre_completo: cleanNombre,
+        email: cleanEmail,
+        alias_palabras_clave: keywords,
+        activo: true,
+      })
+      .select()
+      .single();
+
+    if (clientDbError || !newClient) {
+      console.error('[CrearCliente] Error al registrar en clientes_portal:', clientDbError);
+      return NextResponse.json(
+        { error: `Error al crear el perfil del cliente: ${clientDbError?.message || 'Error desconocido'}` },
+        { status: 500 }
+      );
+    }
+
+    // 4. Enviar correo de activación mediante Resend
+    if (actionLink) {
       const emailRes = await sendWelcomeClientEmail({
         email: cleanEmail,
         nombreCompleto: cleanNombre,
@@ -201,7 +206,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       user: {
-        id: newUserId,
+        id: finalUserId,
         email: cleanEmail,
         nombre_completo: cleanNombre,
       },
