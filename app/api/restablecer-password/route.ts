@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { sendPasswordResetClientEmail } from '@/lib/email/passwordResetClient';
-import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
+import { getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
 
 export async function POST(req: Request) {
   try {
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     const emailRes = await sendPasswordResetClientEmail({
       email: cleanEmail,
       nombreCompleto,
-      resetLink: actionLink,
+      resetLink: toBrandedAuthLink(actionLink),
     });
 
     if (!emailRes.success) {

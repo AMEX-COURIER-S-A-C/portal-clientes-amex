@@ -27,3 +27,25 @@ export function getPortalBaseUrl(req?: Request): string {
   // 4. Por defecto absoluto para cualquier correo a clientes: el dominio oficial en vivo
   return 'https://clientes.sistemaamexcourier.online';
 }
+
+/**
+ * Convierte un enlace de autenticación generado por Supabase (ej. supabase.co/auth/v1/verify?...)
+ * al dominio oficial institucional del portal (ej. clientes.sistemaamexcourier.online/auth/v1/verify?...)
+ * para garantizar marca blanca total y resolver la advertencia de Resend (URLs match sending domain).
+ */
+export function toBrandedAuthLink(rawActionLink: string, req?: Request): string {
+  if (!rawActionLink) return rawActionLink;
+  try {
+    const rawUrl = new URL(rawActionLink);
+    const baseUrl = getPortalBaseUrl(req);
+    const brandedBase = new URL(baseUrl);
+
+    rawUrl.protocol = brandedBase.protocol;
+    rawUrl.host = brandedBase.host;
+    rawUrl.port = brandedBase.port;
+
+    return rawUrl.toString();
+  } catch {
+    return rawActionLink;
+  }
+}

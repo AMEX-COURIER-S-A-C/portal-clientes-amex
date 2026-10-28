@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
-import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
+import { getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
 
 export async function POST(req: Request) {
   try {
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     const emailRes = await sendWelcomeClientEmail({
       email: cleanEmail,
       nombreCompleto,
-      activationLink: actionLink,
+      activationLink: toBrandedAuthLink(actionLink),
     });
 
     if (!emailRes.success) {

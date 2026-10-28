@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
-import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
+import { getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
       const emailRes = await sendWelcomeClientEmail({
         email: cleanEmail,
         nombreCompleto: cleanNombre,
-        activationLink: actionLink,
+        activationLink: toBrandedAuthLink(actionLink),
       });
 
       emailSent = emailRes.success;
