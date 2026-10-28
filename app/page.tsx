@@ -155,6 +155,7 @@ export default function ClienteDashboardTIB() {
   // Estados para Activar / Desactivar cuenta de cliente y Modal de Confirmación
   const [clientToDeactivate, setClientToDeactivate] = useState<ClientePortalItem | null>(null);
   const [isTogglingActiveId, setIsTogglingActiveId] = useState<string | null>(null);
+  const [openKeywordsClientId, setOpenKeywordsClientId] = useState<string | null>(null);
 
   // Estados para el Buscador / Autocompletado de Consignatarios TIB (3,360)
   const [tibSearchResults, setTibSearchResults] = useState<any[]>([]);
@@ -192,6 +193,7 @@ export default function ClienteDashboardTIB() {
         setIsAddClientOpen(false);
         setIsClientsListOpen(false);
         setEditingClient(null);
+        setOpenKeywordsClientId(null);
       }
     };
 
@@ -2610,22 +2612,130 @@ export default function ClienteDashboardTIB() {
                               <td style={{ padding: '12px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
                                 {c.email}
                               </td>
-                              <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
+                              <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', position: 'relative' }}>
                                 {isSuperadminEmail(c.email) ? (
                                   <span style={{ backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', padding: '2px 7px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     <ShieldCheck style={{ width: '11px', height: '11px', color: '#ea580c' }} />
                                     <span>Acceso Global (Todos los paquetes)</span>
                                   </span>
                                 ) : Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                    {c.alias_palabras_clave.map((k, ki) => (
-                                      <span key={ki} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 600 }}>
-                                        {k}
+                                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenKeywordsClientId(openKeywordsClientId === c.id ? null : c.id);
+                                      }}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        backgroundColor: '#f3f4f6',
+                                        border: '1px solid #e5e7eb',
+                                        borderRadius: '6px',
+                                        padding: '4px 9px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 600,
+                                        color: '#374151',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          backgroundColor: '#374151',
+                                          color: '#ffffff',
+                                          borderRadius: '10px',
+                                          padding: '1px 6px',
+                                          fontSize: '10px',
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        {c.alias_palabras_clave.length}
                                       </span>
-                                    ))}
+                                      <span>
+                                        {c.alias_palabras_clave.length === 1 ? 'consignatario' : 'consignatarios'}
+                                      </span>
+                                      <ChevronDown
+                                        style={{
+                                          width: '12px',
+                                          height: '12px',
+                                          color: '#6b7280',
+                                          transform: openKeywordsClientId === c.id ? 'rotate(180deg)' : 'none',
+                                          transition: 'transform 0.15s ease',
+                                        }}
+                                      />
+                                    </button>
+
+                                    {openKeywordsClientId === c.id && (
+                                      <>
+                                        <div
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenKeywordsClientId(null);
+                                          }}
+                                          style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+                                        />
+                                        <div
+                                          onClick={(e) => e.stopPropagation()}
+                                          style={{
+                                            position: 'absolute',
+                                            top: 'calc(100% + 6px)',
+                                            left: 0,
+                                            minWidth: '280px',
+                                            maxWidth: '380px',
+                                            backgroundColor: '#ffffff',
+                                            borderRadius: '8px',
+                                            border: '1px solid #e5e7eb',
+                                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                                            padding: '12px',
+                                            zIndex: 70,
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid #f3f4f6' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <Tag style={{ width: '13px', height: '13px', color: '#ff5722' }} />
+                                              <span style={{ fontSize: '12px', fontWeight: 700, color: '#111827' }}>
+                                                Consignatarios vinculados ({c.alias_palabras_clave.length})
+                                              </span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() => setOpenKeywordsClientId(null)}
+                                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#9ca3af', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                                            >
+                                              <X style={{ width: '14px', height: '14px' }} />
+                                            </button>
+                                          </div>
+
+                                          <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '5px', paddingRight: '2px' }}>
+                                            {c.alias_palabras_clave.map((k, ki) => (
+                                              <span
+                                                key={ki}
+                                                style={{
+                                                  backgroundColor: '#f8fafc',
+                                                  color: '#1e293b',
+                                                  border: '1px solid #e2e8f0',
+                                                  padding: '3px 8px',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  fontWeight: 600,
+                                                  lineHeight: 1.3,
+                                                  wordBreak: 'break-word',
+                                                }}
+                                              >
+                                                {k}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 ) : (
-                                  <span>Nombre exacto</span>
+                                  <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '11.5px' }}>
+                                    Sin consignatarios extra
+                                  </span>
                                 )}
                               </td>
                               <td style={{ padding: '12px 14px' }}>
