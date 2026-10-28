@@ -1067,7 +1067,7 @@ export default function ClienteDashboardTIB() {
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '5px 10px', borderRadius: '6px', maxWidth: '180px' }}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '5px 12px', borderRadius: '6px', maxWidth: 'none' }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'USUARIO'}
@@ -1076,7 +1076,7 @@ export default function ClienteDashboardTIB() {
             </button>
 
             {userMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, marginTop: '6px', width: '250px', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
+              <div style={{ position: 'absolute', right: 0, marginTop: '6px', minWidth: '250px', width: 'max-content', maxWidth: '320px', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
                 <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
                   <div>{user?.email}</div>
