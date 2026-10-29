@@ -288,6 +288,28 @@ async function notifyAdminNewPackage({ wr, tracking, consignatario, pesoKg, tipo
 }
 
 /**
+ * Registra en tiempo real cada correo despachado en portal_eventos_uso para telemetría y analíticas
+ */
+async function logEmailSentToTelemetry(toEmail, subject, wr = null) {
+  try {
+    await sb.from('portal_eventos_uso').insert({
+      usuario_email: String(toEmail).trim().toLowerCase(),
+      tipo_evento: 'EMAIL_ENVIADO',
+      detalles: {
+        asunto: subject,
+        wr: wr || undefined,
+        origen: 'TIB Mirror Daemon VPS',
+      },
+      dispositivo: 'Servidor VPS',
+      navegador: 'TIB Daemon',
+      creado_en: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error(`[TELEMETRÍA ❌] Error registrando email para ${toEmail}:`, e.message);
+  }
+}
+
+/**
  * Notificación por correo con Resend al cliente cuando su paquete llega a Miami
  */
 async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, consignatario) {
@@ -411,12 +433,14 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
 </body>
 </html>`;
 
+    const emailSubject1 = `📦 ¡Tu paquete ya está en Miami! [${wr}]${cleanConsignee ? ' - ' + cleanConsignee : ''}`;
     await resend.emails.send({
       from: RESEND_FROM,
       to: [email],
-      subject: `📦 ¡Tu paquete ya está en Miami! [${wr}]${cleanConsignee ? ' - ' + cleanConsignee : ''}`,
+      subject: emailSubject1,
       html: htmlContent,
     });
+    await logEmailSentToTelemetry(email, emailSubject1, wr);
 
     console.log(`[NOTIFICACIÓN ✅] Email 'RECIBIDO' enviado a ${email} para el paquete ${wr} (${cleanConsignee})`);
   } catch (err) {
@@ -508,12 +532,14 @@ async function notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pe
 </body>
 </html>`;
 
+    const emailSubject2 = `✈️ ¡Tu paquete va en camino a Lima! [${wr}]`;
     await resend.emails.send({
       from: RESEND_FROM,
       to: [email],
-      subject: `✈️ ¡Tu paquete va en camino a Lima! [${wr}]`,
+      subject: emailSubject2,
       html: htmlContent,
     });
+    await logEmailSentToTelemetry(email, emailSubject2, wr);
 
     console.log(`[NOTIFICACIÓN ✅] Email 'EN VUELO' enviado a ${email} para el paquete ${wr}`);
   } catch (err) {
@@ -600,12 +626,14 @@ async function notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking)
 </body>
 </html>`;
 
+    const emailSubject3 = `✅ ¡Tu paquete ha sido entregado! [${wr}]`;
     await resend.emails.send({
       from: RESEND_FROM,
       to: [email],
-      subject: `✅ ¡Tu paquete ha sido entregado! [${wr}]`,
+      subject: emailSubject3,
       html: htmlContent,
     });
+    await logEmailSentToTelemetry(email, emailSubject3, wr);
 
     console.log(`[NOTIFICACIÓN ✅] Email 'ENTREGADO' enviado a ${email} para el paquete ${wr}`);
   } catch (err) {
