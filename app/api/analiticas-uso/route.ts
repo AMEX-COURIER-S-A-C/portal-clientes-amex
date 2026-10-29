@@ -60,18 +60,32 @@ export async function GET(req: NextRequest) {
       if (u.email) authMap.set(u.email.toLowerCase(), u);
     });
 
-    // 3. Obtener conteo de paquetes por consignatario / catálogo y total absoluto del sistema
-    const [catalogRes, systemCountRes] = await Promise.all([
-      portalAdmin
-        .from('amex_portal_clientes')
-        .select('nombre, total_paquetes, recibidos, enviados, entregados'),
+    // 3. Obtener catálogo completo de consignatarios (paginado para superar el límite de 1000 de Supabase)
+    const fetchFullCatalog = async () => {
+      const all: any[] = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data } = await portalAdmin
+          .from('amex_portal_clientes')
+          .select('nombre, total_paquetes')
+          .range(from, from + step - 1);
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
+      return all;
+    };
+
+    const [catalogData, systemCountRes] = await Promise.all([
+      fetchFullCatalog(),
       portalAdmin
         .from('paquetes_portal')
         .select('id', { count: 'exact', head: true }),
     ]);
 
-    const catalogData = catalogRes.data;
-    const totalPaquetesSistema = systemCountRes.count ?? 61246;
+    const totalPaquetesSistema = systemCountRes.count ?? 61261;
 
     const catalogMap = new Map<string, any>();
     (catalogData || []).forEach((c) => {
