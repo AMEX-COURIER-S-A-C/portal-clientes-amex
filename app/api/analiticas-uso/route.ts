@@ -248,10 +248,6 @@ export async function GET(req: NextRequest) {
             }
           }
         }
-        const cleanNombre = (c.nombre_completo || '').replace(/\s+/g, ' ').trim().toUpperCase();
-        if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX' && !clientKeywords.includes(cleanNombre)) {
-          clientKeywords.push(cleanNombre);
-        }
 
         if (clientKeywords.length > 0) {
           const matchedConsignatarios = new Set<string>();
