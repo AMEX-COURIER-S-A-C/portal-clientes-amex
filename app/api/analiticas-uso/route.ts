@@ -232,19 +232,38 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Calcular paquetes aproximados: si es Superadmin ve el 100% del sistema (61,246)
+      // Calcular paquetes exactos: si es Superadmin ve el 100% del sistema (61,261)
       const esAdmin = isSuperadminEmail(c.email);
       let paquetesEstimados = 0;
 
       if (esAdmin) {
         paquetesEstimados = totalPaquetesSistema;
-      } else if (Array.isArray(c.alias_palabras_clave)) {
-        for (const kw of c.alias_palabras_clave) {
-          const cleanKw = (kw || '').toUpperCase().trim();
-          for (const [catName, catRow] of catalogMap.entries()) {
-            if (catName.includes(cleanKw)) {
-              paquetesEstimados += (catRow.total_paquetes || 0);
+      } else {
+        const clientKeywords: string[] = [];
+        if (Array.isArray(c.alias_palabras_clave)) {
+          for (const k of c.alias_palabras_clave) {
+            const clean = (k || '').replace(/\s+/g, ' ').trim().toUpperCase();
+            if (clean && clean.length >= 2 && clean !== 'AMEX' && !clientKeywords.includes(clean)) {
+              clientKeywords.push(clean);
             }
+          }
+        }
+        const cleanNombre = (c.nombre_completo || '').replace(/\s+/g, ' ').trim().toUpperCase();
+        if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX' && !clientKeywords.includes(cleanNombre)) {
+          clientKeywords.push(cleanNombre);
+        }
+
+        if (clientKeywords.length > 0) {
+          const matchedConsignatarios = new Set<string>();
+          for (const kw of clientKeywords) {
+            for (const [catName] of catalogMap.entries()) {
+              if (catName.includes(kw)) {
+                matchedConsignatarios.add(catName);
+              }
+            }
+          }
+          for (const name of matchedConsignatarios) {
+            paquetesEstimados += (catalogMap.get(name)?.total_paquetes || 0);
           }
         }
       }
