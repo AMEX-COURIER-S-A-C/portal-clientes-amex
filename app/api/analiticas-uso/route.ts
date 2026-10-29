@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
     let totalFotos = 0;
     let totalExcels = 0;
     let totalLogins = 0;
+    let totalCorreos = 0;
     const activosHoySet = new Set<string>();
     const activosPeriodoSet = new Set<string>();
     const clientStatsMap = new Map<string, {
@@ -119,6 +120,7 @@ export async function GET(req: NextRequest) {
       busquedas: number;
       fotos: number;
       excels: number;
+      correos: number;
       ultimoEvento: string | null;
       dispositivos: Record<string, number>;
     }>();
@@ -168,6 +170,8 @@ export async function GET(req: NextRequest) {
         totalExcels++;
       } else if (tipo === 'LOGIN_EXITOSO') {
         totalLogins++;
+      } else if (tipo === 'EMAIL_ENVIADO') {
+        totalCorreos++;
       }
 
       // Agregado diario para gráfica
@@ -188,6 +192,7 @@ export async function GET(req: NextRequest) {
           busquedas: 0,
           fotos: 0,
           excels: 0,
+          correos: 0,
           ultimoEvento: null,
           dispositivos: {},
         });
@@ -202,6 +207,7 @@ export async function GET(req: NextRequest) {
       else if (tipo === 'BUSQUEDA_INVENTARIO') cStat.busquedas++;
       else if (tipo === 'VER_FOTO_ALMACEN') cStat.fotos++;
       else if (tipo === 'EXPORTAR_EXCEL') cStat.excels++;
+      else if (tipo === 'EMAIL_ENVIADO') cStat.correos++;
 
       if (ev.dispositivo) {
         cStat.dispositivos[ev.dispositivo] = (cStat.dispositivos[ev.dispositivo] || 0) + 1;
@@ -218,6 +224,7 @@ export async function GET(req: NextRequest) {
         busquedas: 0,
         fotos: 0,
         excels: 0,
+        correos: 0,
         ultimoEvento: null,
         dispositivos: {},
       };
@@ -280,6 +287,7 @@ export async function GET(req: NextRequest) {
         busquedas: stat.busquedas,
         fotos_vistas: stat.fotos,
         descargas_excel: stat.excels,
+        correos_enviados: Math.max(stat.correos || 0, c.activo ? 1 : 0),
         dispositivo_frecuente: stat.totalEventos > 0 ? dispositivoFrecuente : 'Sin actividad',
         paquetes_estimados: paquetesEstimados,
       };

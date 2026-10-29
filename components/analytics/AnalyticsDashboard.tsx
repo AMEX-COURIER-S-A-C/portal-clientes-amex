@@ -26,6 +26,7 @@ import {
   Sparkles,
   BarChart3,
   Package,
+  Mail,
 } from 'lucide-react';
 
 interface KPIResumen {
@@ -68,6 +69,7 @@ interface ClienteAnalitica {
   busquedas: number;
   fotos_vistas: number;
   descargas_excel: number;
+  correos_enviados: number;
   dispositivo_frecuente: string;
   paquetes_estimados: number;
 }
@@ -249,6 +251,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       'Busquedas',
       'Fotos Vistas',
       'Descargas Excel',
+      'Correos Enviados',
       'Dispositivo Frecuente',
       'Paquetes Estimados',
     ];
@@ -263,6 +266,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       c.busquedas,
       c.fotos_vistas,
       c.descargas_excel,
+      c.correos_enviados || 0,
       `"${c.dispositivo_frecuente}"`,
       c.paquetes_estimados,
     ]);
@@ -724,6 +728,12 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('descargas_excel'); setSortAsc(!sortAsc); }}>
                   Excels
                 </th>
+                <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('correos_enviados'); setSortAsc(!sortAsc); }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                    <span>Correos</span>
+                    {sortField === 'correos_enviados' && <span>{sortAsc ? '↑' : '↓'}</span>}
+                  </div>
+                </th>
                 <th style={{ padding: '12px 16px', minWidth: '160px', cursor: 'pointer' }} onClick={() => { setSortField('total_eventos'); setSortAsc(!sortAsc); }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>Nivel Actividad</span>
@@ -819,6 +829,28 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                       {/* Excels */}
                       <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#7c3aed' }}>
                         {c.descargas_excel}
+                      </td>
+
+                      {/* Correos */}
+                      <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backgroundColor: '#f0f9ff',
+                            color: '#0369a1',
+                            border: '1px solid #bae6fd',
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                          }}
+                          title={`${c.correos_enviados || 0} correo(s) enviados`}
+                        >
+                          <Mail style={{ width: '11px', height: '11px', color: '#0284c7' }} />
+                          <span>{c.correos_enviados || 0}</span>
+                        </span>
                       </td>
 
                       {/* Nivel de Actividad Visual */}
@@ -1009,6 +1041,10 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                       badgeColor = '#0891b2';
                       badgeBg = '#ecfeff';
                       label = 'Filtro por Estado';
+                    } else if (evt.tipo_evento === 'EMAIL_ENVIADO') {
+                      badgeColor = '#0284c7';
+                      badgeBg = '#f0f9ff';
+                      label = '✉️ Correo Notificado';
                     }
 
                     return (
@@ -1058,6 +1094,9 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                           )}
                           {evt.detalles?.scope && (
                             <div><strong>Alcance Excel:</strong> {evt.detalles.scope} ({evt.detalles.filename || ''})</div>
+                          )}
+                          {evt.detalles?.asunto && (
+                            <div><strong>Asunto:</strong> {evt.detalles.asunto}</div>
                           )}
                         </div>
 

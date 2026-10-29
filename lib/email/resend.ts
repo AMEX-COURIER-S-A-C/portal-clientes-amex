@@ -61,6 +61,30 @@ export async function sendEmail(options: SendEmailOptions) {
       return { success: false, error: error.message };
     }
 
+    // Registrar evento de telemetría en segundo plano (0 impacto en rendimiento)
+    try {
+      const { getPortalAdmin } = await import('@/lib/supabase/portal-admin');
+      const portalAdmin = getPortalAdmin();
+      const recipients = Array.isArray(options.to) ? options.to : [options.to];
+      for (const toEmail of recipients) {
+        Promise.resolve(
+          portalAdmin
+            .from('portal_eventos_uso')
+            .insert({
+              usuario_email: String(toEmail).trim().toLowerCase(),
+              tipo_evento: 'EMAIL_ENVIADO',
+              detalles: {
+                asunto: options.subject,
+                resend_id: data?.id,
+              },
+              dispositivo: 'Servidor',
+              navegador: 'Resend API',
+              creado_en: new Date().toISOString(),
+            })
+        ).catch(() => {});
+      }
+    } catch (_) {}
+
     return { success: true, id: data?.id };
   } catch (err: any) {
     console.error('❌ [Resend Service] Excepción en envío:', err);
