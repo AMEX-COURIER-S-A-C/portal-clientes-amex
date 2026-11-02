@@ -27,6 +27,7 @@ import {
   BarChart3,
   Package,
   Mail,
+  Send,
 } from 'lucide-react';
 
 interface KPIResumen {
@@ -37,6 +38,7 @@ interface KPIResumen {
   total_fotos_vistas: number;
   total_descargas_excel: number;
   total_logins: number;
+  total_correos_enviados?: number;
   cliente_mas_activo: string;
 }
 
@@ -47,6 +49,7 @@ interface DiaTendencia {
   fotos: number;
   excels: number;
   logins: number;
+  correos?: number;
   total: number;
 }
 
@@ -116,6 +119,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   const [selectedClientForAudit, setSelectedClientForAudit] = useState<ClienteAnalitica | null>(null);
   const [auditEvents, setAuditEvents] = useState<EventoAuditoria[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState<boolean>(false);
+  const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
 
   // Cargar datos principales
   const fetchAnalytics = async (selectedDays = days, showSpinner = true) => {
@@ -281,11 +285,18 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     URL.revokeObjectURL(url);
   };
 
-  // Cálculo para el gráfico de barras nativo
-  const maxBarValue = useMemo(() => {
-    if (!data?.tendencia_diaria?.length) return 10;
-    const max = Math.max(...data.tendencia_diaria.map(d => d.total));
-    return max > 0 ? max : 10;
+  // Cálculo para el gráfico de barras nativo y escala del eje Y
+  const yAxisMax = useMemo(() => {
+    if (!data?.tendencia_diaria?.length) return 20;
+    const max = Math.max(...data.tendencia_diaria.map(d => d.total), 0);
+    if (max <= 5) return 5;
+    if (max <= 10) return 10;
+    if (max <= 20) return 20;
+    if (max <= 50) return 50;
+    if (max <= 100) return 100;
+    if (max <= 150) return 150;
+    if (max <= 200) return 200;
+    return Math.ceil((max * 1.1) / 50) * 50;
   }, [data?.tendencia_diaria]);
 
   const maxClientEvents = useMemo(() => {
@@ -316,6 +327,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     total_fotos_vistas: 0,
     total_descargas_excel: 0,
     total_logins: 0,
+    total_correos_enviados: 0,
     cliente_mas_activo: 'Sin datos',
   };
 
@@ -525,7 +537,24 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
           </div>
         </div>
 
-        {/* KPI 5: Cliente Más Frecuente */}
+        {/* KPI 5: Correos Enviados a Clientes */}
+        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Correos Enviados</span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f0f9ff', border: '1px solid #e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Mail style={{ width: '17px', height: '17px', color: '#0284c7' }} />
+            </div>
+          </div>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
+            {(kpis.total_correos_enviados || 0).toLocaleString()}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
+            <Send style={{ width: '12px', height: '12px', color: '#0284c7' }} />
+            <span>Avisos de almacén y accesos al portal</span>
+          </div>
+        </div>
+
+        {/* KPI 6: Cliente Más Frecuente */}
         <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Cliente Más Activo</span>
@@ -556,84 +585,242 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             </p>
           </div>
 
-          {/* Leyenda de Colores */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', fontWeight: 600 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* Leyenda de Colores con 5 Capas de Métricas */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '11px', fontWeight: 600, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#3b82f6' }} />
               <span style={{ color: '#475569' }}>Logins</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#10b981' }} />
               <span style={{ color: '#475569' }}>Búsquedas</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f97316' }} />
               <span style={{ color: '#475569' }}>Fotos</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#8b5cf6' }} />
               <span style={{ color: '#475569' }}>Excels</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#0284c7' }} />
+              <span style={{ color: '#475569' }}>Correos</span>
             </div>
           </div>
         </div>
 
-        {/* Gráfico Visual Responsivo a Ancho Completo */}
-        <div style={{ flex: 1, minHeight: '190px', display: 'flex', alignItems: 'flex-end', gap: '4px', paddingTop: '20px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9', overflowX: 'auto' }}>
-          {data?.tendencia_diaria && data.tendencia_diaria.length > 0 ? (
-            data.tendencia_diaria.map((d, idx) => {
-              const heightPct = Math.max(Math.min((d.total / maxBarValue) * 100, 100), d.total > 0 ? 8 : 2);
-              return (
-                <div
-                  key={d.fecha}
-                  title={`${d.dia} (${d.fecha}):\n• Total: ${d.total}\n• Logins: ${d.logins}\n• Búsquedas: ${d.busquedas}\n• Fotos: ${d.fotos}\n• Excels: ${d.excels}`}
-                  style={{
-                    flex: 1,
-                    minWidth: days > 60 ? '12px' : '18px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    height: '100%',
-                    justifyContent: 'flex-end',
-                    cursor: 'pointer',
-                    position: 'relative',
-                  }}
-                >
-                  {/* Barra apilada estilizada */}
-                  <div
-                    style={{
-                      width: '100%',
-                      height: `${heightPct}%`,
-                      borderRadius: '4px 4px 0 0',
-                      display: 'flex',
-                      flexDirection: 'column-reverse',
-                      backgroundColor: d.total === 0 ? '#f1f5f9' : 'transparent',
-                      overflow: 'hidden',
-                      transition: 'transform 0.15s ease',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scaleY(1.05)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scaleY(1)'; }}
-                  >
-                    {d.logins > 0 && <div style={{ height: `${(d.logins / d.total) * 100}%`, backgroundColor: '#3b82f6' }} />}
-                    {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
-                    {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
-                    {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
-                  </div>
-
-                  {/* Etiqueta de fecha */}
-                  {(idx % (days > 30 ? 5 : 2) === 0 || idx === data.tendencia_diaria.length - 1) && (
-                    <span style={{ fontSize: '9.5px', color: '#94a3b8', marginTop: '6px', whiteSpace: 'nowrap' }}>
-                      {d.dia}
-                    </span>
-                  )}
-                </div>
-              );
-            })
-          ) : (
-            <div style={{ width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '13px', padding: '40px 0' }}>
-              Sin registros de actividad en este período.
+        {/* Gráfico con escala Y y barras apiladas */}
+        {data?.tendencia_diaria && data.tendencia_diaria.length > 0 ? (
+          <div style={{ display: 'flex', width: '100%', gap: '10px', marginTop: '10px' }}>
+            {/* Columna de Escala Eje Y (Valores de referencia) */}
+            <div
+              style={{
+                width: '38px',
+                height: '220px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                alignItems: 'flex-end',
+                paddingRight: '6px',
+                fontSize: '10px',
+                fontWeight: 600,
+                color: '#94a3b8',
+                userSelect: 'none',
+              }}
+            >
+              <span>{yAxisMax}</span>
+              <span>{Math.round(yAxisMax * 0.75)}</span>
+              <span>{Math.round(yAxisMax * 0.5)}</span>
+              <span>{Math.round(yAxisMax * 0.25)}</span>
+              <span>0</span>
             </div>
-          )}
-        </div>
+
+            {/* Contenedor Principal de la Gráfica */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              {/* Área de Barras con Líneas Guía Horizontales */}
+              <div
+                style={{
+                  position: 'relative',
+                  height: '220px',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: days > 60 ? '2px' : '4px',
+                  borderBottom: '1px solid #cbd5e1',
+                }}
+              >
+                {/* 4 Líneas de referencia de fondo */}
+                <div style={{ position: 'absolute', left: 0, right: 0, top: 0, borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: 0, right: 0, top: '25%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: 0, right: 0, top: '75%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+
+                {/* Columnas de cada día */}
+                {data.tendencia_diaria.map((d, idx) => {
+                  const barHeightPct = d.total > 0 ? Math.max((d.total / yAxisMax) * 100, 3) : 0;
+                  const isHovered = hoveredBarIndex === idx;
+
+                  // Tooltip alignment: prevent clipping on edges
+                  const isNearLeft = idx < 3;
+                  const isNearRight = idx > data.tendencia_diaria.length - 4;
+
+                  return (
+                    <div
+                      key={d.fecha}
+                      onMouseEnter={() => setHoveredBarIndex(idx)}
+                      onMouseLeave={() => setHoveredBarIndex(null)}
+                      style={{
+                        flex: 1,
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        position: 'relative',
+                        cursor: 'pointer',
+                        zIndex: isHovered ? 25 : 1,
+                      }}
+                    >
+                      {/* Tooltip flotante interactivo */}
+                      {isHovered && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            bottom: `calc(${Math.min(barHeightPct, 100)}% + 12px)`,
+                            left: isNearLeft ? '0' : isNearRight ? 'auto' : '50%',
+                            right: isNearRight ? '0' : 'auto',
+                            transform: isNearLeft || isNearRight ? 'none' : 'translateX(-50%)',
+                            backgroundColor: '#0f172a',
+                            color: '#ffffff',
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.4)',
+                            pointerEvents: 'none',
+                            whiteSpace: 'nowrap',
+                            zIndex: 40,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, borderBottom: '1px solid #334155', paddingBottom: '4px', marginBottom: '6px', fontSize: '11.5px', color: '#f8fafc' }}>
+                            📅 {d.dia} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({d.fecha})</span>
+                          </div>
+                          <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '6px', fontSize: '12px' }}>
+                            Total: {d.total} {d.total === 1 ? 'actividad' : 'actividades'}
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '3px', fontSize: '11px' }}>
+                            {d.logins > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ color: '#60a5fa' }}>● Logins:</span>
+                                <b style={{ color: '#ffffff' }}>{d.logins}</b>
+                              </div>
+                            )}
+                            {d.busquedas > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ color: '#34d399' }}>● Búsquedas:</span>
+                                <b style={{ color: '#ffffff' }}>{d.busquedas}</b>
+                              </div>
+                            )}
+                            {d.fotos > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ color: '#fb923c' }}>● Fotos Vistas:</span>
+                                <b style={{ color: '#ffffff' }}>{d.fotos}</b>
+                              </div>
+                            )}
+                            {d.excels > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ color: '#c084fc' }}>● Excels:</span>
+                                <b style={{ color: '#ffffff' }}>{d.excels}</b>
+                              </div>
+                            )}
+                            {(d.correos || 0) > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ color: '#38bdf8' }}>● Correos:</span>
+                                <b style={{ color: '#ffffff' }}>{d.correos}</b>
+                              </div>
+                            )}
+                            {d.total === 0 && (
+                              <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin actividad registrada</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Barra apilada o indicador neutro */}
+                      {d.total > 0 ? (
+                        <div
+                          style={{
+                            width: '100%',
+                            maxWidth: '28px',
+                            height: `${barHeightPct}%`,
+                            borderRadius: '4px 4px 0 0',
+                            display: 'flex',
+                            flexDirection: 'column-reverse',
+                            overflow: 'hidden',
+                            boxShadow: isHovered ? '0 0 0 2px #0284c7' : 'none',
+                            filter: isHovered ? 'brightness(1.1)' : 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {d.logins > 0 && <div style={{ height: `${(d.logins / d.total) * 100}%`, backgroundColor: '#3b82f6' }} />}
+                          {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
+                          {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
+                          {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
+                          {(d.correos || 0) > 0 && <div style={{ height: `${((d.correos || 0) / d.total) * 100}%`, backgroundColor: '#0284c7' }} />}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            width: '100%',
+                            maxWidth: '28px',
+                            height: '2px',
+                            backgroundColor: isHovered ? '#94a3b8' : '#e2e8f0',
+                            transition: 'background-color 0.15s ease',
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Fila de Etiquetas de Fecha (Eje X) */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: days > 60 ? '2px' : '4px',
+                  paddingTop: '8px',
+                  height: '24px',
+                }}
+              >
+                {data.tendencia_diaria.map((d, idx) => {
+                  const step = days <= 7 ? 1 : days <= 15 ? 2 : days <= 30 ? 3 : days <= 90 ? 7 : 14;
+                  const isVisible = idx % step === 0 || idx === data.tendencia_diaria.length - 1;
+                  return (
+                    <div
+                      key={d.fecha}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                    >
+                      {isVisible && (
+                        <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                          {d.dia}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '13px', padding: '40px 0' }}>
+            Sin registros de actividad en este período.
+          </div>
+        )}
       </div>
 
       {/* 4. Tabla de Directorio Completo de Clientes y Auditoría de Uso */}

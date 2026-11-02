@@ -1,3 +1,4 @@
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 
@@ -53,6 +54,10 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanEmail = String(usuario_email).trim().toLowerCase();
+    if (isSuperadminEmail(cleanEmail)) {
+      // Ignorar silenciosamente las acciones de administradores
+      return NextResponse.json({ ok: true, ignored: true });
+    }
     const cleanTipo = String(tipo_evento).trim().toUpperCase();
     const userAgent = req.headers.get('user-agent');
     const { dispositivo, navegador } = parseUserAgent(userAgent);

@@ -51,7 +51,8 @@ export async function GET(req: NextRequest) {
       .select('id, email, nombre_completo, alias_palabras_clave, activo, creado_en')
       .order('nombre_completo', { ascending: true });
 
-    const clients = clientsData || [];
+    // Excluir cuentas de administradores para mostrar estrictamente clientes reales
+    const clients = (clientsData || []).filter(c => !isSuperadminEmail(c.email));
 
     // 2. Obtener usuarios de auth para su last_sign_in_at
     const { data: authUsersRes } = await portalAdmin.auth.admin.listUsers({ perPage: 1000 });
@@ -104,7 +105,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: eventsErr.message }, { status: 500 });
     }
 
-    const events = eventsData || [];
+    // Excluir eventos de administradores para que no contaminen KPIs, gráficas ni promedios
+    const events = (eventsData || []).filter(ev => !isSuperadminEmail(ev.usuario_email));
 
     // 5. Procesar KPIs globales
     let totalBusquedas = 0;
@@ -127,19 +129,26 @@ export async function GET(req: NextRequest) {
 
     const dailyTrendMap = new Map<string, {
       fecha: string;
+      dia: string;
       total: number;
       logins: number;
       busquedas: number;
       fotos: number;
       excels: number;
+      correos: number;
     }>();
+
+    const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
 
     // Inicializar días de la gráfica (para que los días sin eventos muestren 0 y la gráfica sea continua)
     for (let i = safeDays - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const dayKey = d.toISOString().split('T')[0];
-      dailyTrendMap.set(dayKey, { fecha: dayKey, total: 0, logins: 0, busquedas: 0, fotos: 0, excels: 0 });
+      const parts = dayKey.split('-');
+      const mIdx = parseInt(parts[1], 10) - 1;
+      const dayNum = parseInt(parts[2], 10);
+      const diaLabel = `${dayNum} ${MESES_CORTO[mIdx] || ''}`;
+      dailyTrendMap.set(dayKey, { fecha: dayKey, dia: diaLabel, total: 0, logins: 0, busquedas: 0, fotos: 0, excels: 0, correos: 0 });
     }
 
     const topSearchTermsMap = new Map<string, number>();
@@ -182,6 +191,7 @@ export async function GET(req: NextRequest) {
         else if (tipo === 'BUSQUEDA_INVENTARIO') dStat.busquedas++;
         else if (tipo === 'VER_FOTO_ALMACEN') dStat.fotos++;
         else if (tipo === 'EXPORTAR_EXCEL') dStat.excels++;
+        else if (tipo === 'EMAIL_ENVIADO') dStat.correos++;
       }
 
       // Agregado por cliente
@@ -306,6 +316,11 @@ export async function GET(req: NextRequest) {
       ? clientesAnalitica[0].nombre_completo
       : 'Sin interacciones aún';
 
+    const totalCorreosEnviados = clientesAnalitica.reduce(
+      (sum, c) => sum + (c.correos_enviados || 0),
+      0
+    );
+
     return NextResponse.json({
       periodo_dias: safeDays,
       resumen_kpis: {
@@ -316,6 +331,7 @@ export async function GET(req: NextRequest) {
         total_fotos_vistas: totalFotos,
         total_descargas_excel: totalExcels,
         total_logins: totalLogins,
+        total_correos_enviados: totalCorreosEnviados,
         cliente_mas_activo: clienteMasActivo,
       },
       tendencia_diaria: Array.from(dailyTrendMap.values()),

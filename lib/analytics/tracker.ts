@@ -1,3 +1,4 @@
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 /**
  * Motor de Telemetría Invisible AMEX Courier
  * Envía eventos de uso y actividad en segundo plano sin bloquear la experiencia del usuario.
@@ -21,6 +22,7 @@ export interface TrackEventOptions {
 export function trackPortalEvent(options: TrackEventOptions): void {
   if (typeof window === 'undefined') return;
   if (!options.usuario_email) return;
+  if (isSuperadminEmail(options.usuario_email)) return;
 
   const payload = JSON.stringify({
     usuario_email: options.usuario_email,

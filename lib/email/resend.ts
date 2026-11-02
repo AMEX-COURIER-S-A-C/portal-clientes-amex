@@ -66,12 +66,15 @@ export async function sendEmail(options: SendEmailOptions) {
       const { getPortalAdmin } = await import('@/lib/supabase/portal-admin');
       const portalAdmin = getPortalAdmin();
       const recipients = Array.isArray(options.to) ? options.to : [options.to];
+      const { isSuperadminEmail } = await import('@/lib/portal/superadmin');
       for (const toEmail of recipients) {
+        const cleanTo = String(toEmail).trim().toLowerCase();
+        if (isSuperadminEmail(cleanTo)) continue;
         Promise.resolve(
           portalAdmin
             .from('portal_eventos_uso')
             .insert({
-              usuario_email: String(toEmail).trim().toLowerCase(),
+              usuario_email: cleanTo,
               tipo_evento: 'EMAIL_ENVIADO',
               detalles: {
                 asunto: options.subject,

@@ -292,6 +292,10 @@ async function notifyAdminNewPackage({ wr, tracking, consignatario, pesoKg, tipo
  */
 async function logEmailSentToTelemetry(toEmail, subject, wr = null) {
   try {
+    const SUPERADMIN_EMAILS = ['sistemaamexcourier@gmail.com', 'gerencia@amexcourierperu.com'];
+    if (SUPERADMIN_EMAILS.includes(String(toEmail).trim().toLowerCase())) {
+      return;
+    }
     await sb.from('portal_eventos_uso').insert({
       usuario_email: String(toEmail).trim().toLowerCase(),
       tipo_evento: 'EMAIL_ENVIADO',
