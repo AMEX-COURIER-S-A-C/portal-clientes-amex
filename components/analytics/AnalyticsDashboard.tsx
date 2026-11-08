@@ -40,6 +40,47 @@ interface KPIResumen {
   total_logins: number;
   total_correos_enviados?: number;
   cliente_mas_activo: string;
+  clientes_activados: number;
+  clientes_nunca_ingresaron: number;
+  clientes_en_riesgo: number;
+  clientes_solo_correo: number;
+  tasa_activacion: number;
+}
+
+interface ComparativaPeriodo {
+  activos_periodo: number;
+  total_actividad: number;
+  total_logins: number;
+  total_busquedas: number;
+  total_fotos_vistas: number;
+  total_descargas_excel: number;
+  total_correos_enviados: number;
+}
+
+interface ConversionCorreos {
+  correos_analizados: number;
+  conversiones_24h: number;
+  conversiones_72h: number;
+  tasa_24h: number;
+  tasa_72h: number;
+  clientes_convertidos_24h: number;
+}
+
+interface DistribucionItem {
+  nombre: string;
+  cantidad: number;
+  porcentaje: number;
+}
+
+interface DistribucionHora {
+  hora: number;
+  cantidad: number;
+}
+
+interface DistribucionData {
+  dispositivos: DistribucionItem[];
+  navegadores: DistribucionItem[];
+  horas: DistribucionHora[];
 }
 
 interface DiaTendencia {
@@ -50,6 +91,8 @@ interface DiaTendencia {
   excels: number;
   logins: number;
   correos?: number;
+  actividad?: number;
+  otros?: number;
   total: number;
 }
 
@@ -66,7 +109,11 @@ interface ClienteAnalitica {
   es_admin?: boolean;
   alias_palabras_clave?: string[];
   creado_en: string;
-  ultimo_acceso: string | null;
+  ultimo_login: string | null;
+  ultima_actividad: string | null;
+  dias_sin_actividad?: number | null;
+  en_riesgo?: boolean;
+  nunca_ingreso?: boolean;
   total_eventos: number;
   logins: number;
   busquedas: number;
@@ -83,6 +130,9 @@ interface AnalyticsData {
   tendencia_diaria: DiaTendencia[];
   top_busquedas: TopBusqueda[];
   clientes: ClienteAnalitica[];
+  comparativa?: { periodo_anterior: ComparativaPeriodo };
+  conversion_correos?: ConversionCorreos;
+  distribucion?: DistribucionData;
 }
 
 interface EventoAuditoria {
@@ -119,7 +169,15 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   const [selectedClientForAudit, setSelectedClientForAudit] = useState<ClienteAnalitica | null>(null);
   const [auditEvents, setAuditEvents] = useState<EventoAuditoria[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState<boolean>(false);
+  const [auditTotal, setAuditTotal] = useState<number>(0);
+  const [auditOffset, setAuditOffset] = useState<number>(0);
+  const [auditEventType, setAuditEventType] = useState<string>('ALL');
+  const [auditFrom, setAuditFrom] = useState<string>('');
+  const [auditTo, setAuditTo] = useState<string>('');
+  const [appliedAuditFilters, setAppliedAuditFilters] = useState<{ eventType: string; from: string; to: string }>({ eventType: 'ALL', from: '', to: '' });
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
+
+  const AUDIT_PAGE_SIZE = 30;
 
   // Cargar datos principales
   const fetchAnalytics = async (selectedDays = days, showSpinner = true) => {
@@ -150,23 +208,72 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     }
   }, [adminEmail, days]);
 
-  // Cargar auditoría detallada de un cliente
-  const handleOpenClientAudit = async (cliente: ClienteAnalitica) => {
-    setSelectedClientForAudit(cliente);
-    setIsLoadingAudit(true);
-    setAuditEvents([]);
+  // Cargar auditoría detallada de un cliente (con filtros y paginación)
+  const fetchClientAudit = async (
+    cliente: ClienteAnalitica,
+    opts: { eventType?: string; from?: string; to?: string; offset?: number } = {}
+  ) => {
+    const eventType = opts.eventType ?? 'ALL';
+    const from = opts.from ?? '';
+    const to = opts.to ?? '';
+    const offset = opts.offset ?? 0;
 
+    setIsLoadingAudit(true);
     try {
-      const res = await fetch(`/api/analiticas-uso?admin_email=${encodeURIComponent(adminEmail)}&client_email=${encodeURIComponent(cliente.email)}`);
+      const params = new URLSearchParams({
+        admin_email: adminEmail,
+        client_email: cliente.email,
+        event_type: eventType,
+        limit: String(AUDIT_PAGE_SIZE),
+        offset: String(offset),
+      });
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+
+      const res = await fetch(`/api/analiticas-uso?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
         setAuditEvents(json.historial || []);
+        setAuditTotal(typeof json.total === 'number' ? json.total : 0);
+        setAuditOffset(offset);
+        setAppliedAuditFilters({ eventType, from, to });
       }
     } catch (e) {
       console.error('Error al cargar historial de auditoría:', e);
     } finally {
       setIsLoadingAudit(false);
     }
+  };
+
+  const handleOpenClientAudit = (cliente: ClienteAnalitica) => {
+    setSelectedClientForAudit(cliente);
+    setAuditEvents([]);
+    setAuditTotal(0);
+    setAuditOffset(0);
+    setAuditEventType('ALL');
+    setAuditFrom('');
+    setAuditTo('');
+    fetchClientAudit(cliente, { offset: 0 });
+  };
+
+  const applyAuditFilters = () => {
+    if (!selectedClientForAudit) return;
+    fetchClientAudit(selectedClientForAudit, {
+      eventType: auditEventType,
+      from: auditFrom,
+      to: auditTo,
+      offset: 0,
+    });
+  };
+
+  const changeAuditPage = (nextOffset: number) => {
+    if (!selectedClientForAudit || nextOffset < 0) return;
+    fetchClientAudit(selectedClientForAudit, {
+      eventType: appliedAuditFilters.eventType,
+      from: appliedAuditFilters.from,
+      to: appliedAuditFilters.to,
+      offset: nextOffset,
+    });
   };
 
   // Formato relativo de tiempo en español
@@ -192,6 +299,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     if (!dateStr) return '—';
     const d = new Date(dateStr);
     return d.toLocaleString('es-PE', {
+      timeZone: 'America/Lima',
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -249,13 +357,14 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       'Cliente',
       'Correo',
       'Estado Cuenta',
-      'Ultimo Acceso',
-      'Total Eventos',
-      'Logins',
+      'Ultimo Login',
+      'Ultima Actividad (periodo)',
+      'Total Actividad Cliente',
+      `Logins (${days} dias)`,
       'Busquedas',
       'Fotos Vistas',
       'Descargas Excel',
-      'Correos Enviados',
+      'Correos Automaticos',
       'Dispositivo Frecuente',
       'Paquetes Estimados',
     ];
@@ -264,7 +373,8 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       `"${c.nombre_completo.replace(/"/g, '""')}"`,
       `"${c.email}"`,
       c.activo ? 'Activo' : 'Desactivado',
-      `"${formatFullDate(c.ultimo_acceso)}"`,
+      `"${formatFullDate(c.ultimo_login)}"`,
+      `"${formatFullDate(c.ultima_actividad)}"`,
       c.total_eventos,
       c.logins,
       c.busquedas,
@@ -305,6 +415,46 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     return max > 0 ? max : 1;
   }, [data?.clientes]);
 
+  const prev = data?.comparativa?.periodo_anterior;
+  const conversion = data?.conversion_correos;
+  const distribucion = data?.distribucion;
+  const horas = distribucion?.horas || [];
+  const maxHourCount = Math.max(...horas.map(h => h.cantidad), 1);
+
+  const clientesEnRiesgoTop = useMemo(
+    () => (data?.clientes || [])
+      .filter(c => c.en_riesgo)
+      .sort((a, b) => (b.dias_sin_actividad || 0) - (a.dias_sin_actividad || 0))
+      .slice(0, 5),
+    [data?.clientes]
+  );
+
+  const nuncaIngresaronTop = useMemo(
+    () => (data?.clientes || [])
+      .filter(c => c.nunca_ingreso)
+      .sort((a, b) => (b.correos_enviados || 0) - (a.correos_enviados || 0))
+      .slice(0, 5),
+    [data?.clientes]
+  );
+
+  const oportunidadesTop = useMemo(
+    () => (data?.clientes || [])
+      .filter(c => (c.paquetes_estimados || 0) > 0)
+      .sort((a, b) => {
+        // Menor uso por paquete primero; a igual ratio, mayor volumen de paquetes.
+        const ratioA = (a.total_eventos + 1) / ((a.paquetes_estimados || 0) + 1);
+        const ratioB = (b.total_eventos + 1) / ((b.paquetes_estimados || 0) + 1);
+        return ratioA - ratioB || (b.paquetes_estimados || 0) - (a.paquetes_estimados || 0);
+      })
+      .slice(0, 6),
+    [data?.clientes]
+  );
+
+  const horasPico = [...horas]
+    .filter(h => h.cantidad > 0)
+    .sort((a, b) => b.cantidad - a.cantidad)
+    .slice(0, 3);
+
   if (isLoading && !data) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', minHeight: '400px' }}>
@@ -329,6 +479,117 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     total_logins: 0,
     total_correos_enviados: 0,
     cliente_mas_activo: 'Sin datos',
+    clientes_activados: 0,
+    clientes_nunca_ingresaron: 0,
+    clientes_en_riesgo: 0,
+    clientes_solo_correo: 0,
+    tasa_activacion: 0,
+  };
+
+  const prettyLabel = (value: string) => {
+    const clean = (value || '').trim();
+    if (/^ma3vil$/i.test(clean) || /^m[oó0]vil$/i.test(clean)) return 'Móvil';
+    if (/^desconocido$/i.test(clean)) return 'Desconocido';
+    if (/^escritorio$/i.test(clean)) return 'Escritorio';
+    return clean || 'Desconocido';
+  };
+
+  // Comparación contra el período inmediatamente anterior del mismo tamaño.
+  const renderVariation = (current: number, previousValue?: number | null) => {
+    if (!previousValue || previousValue <= 0) {
+      return (
+        <span style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 500 }}>
+          Sin base anterior
+        </span>
+      );
+    }
+
+    const delta = current - previousValue;
+    const pct = Math.round((delta / previousValue) * 1000) / 10;
+    const isUp = delta >= 0;
+
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', fontWeight: 700, color: isUp ? '#16a34a' : '#dc2626', flexWrap: 'wrap' }}>
+        <span>{isUp ? '▲' : '▼'} {Math.abs(pct)}%</span>
+        <span style={{ color: '#94a3b8', fontWeight: 500 }}>
+          vs. período anterior ({previousValue.toLocaleString()})
+        </span>
+      </span>
+    );
+  };
+
+  const kpiCardStyle: React.CSSProperties = {
+    backgroundColor: '#ffffff',
+    padding: '18px 20px',
+    borderRadius: '12px',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+  };
+
+  const sectionTitleStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: '15px',
+    fontWeight: 700,
+    color: '#0f172a',
+  };
+
+  const sectionSubtitleStyle: React.CSSProperties = {
+    margin: '2px 0 0',
+    fontSize: '12px',
+    color: '#64748b',
+  };
+
+  const renderDistributionCard = (
+    title: string,
+    subtitle: string,
+    items: DistribucionItem[] | undefined,
+    icon: React.ReactNode,
+    color: string
+  ) => {
+    const list = (items || []).map(item => ({ ...item, nombre: prettyLabel(item.nombre) }));
+    const total = list.reduce((sum, item) => sum + item.cantidad, 0);
+
+    return (
+      <div style={kpiCardStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>{title}</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>{subtitle}</div>
+          </div>
+          <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: `${color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {icon}
+          </div>
+        </div>
+
+        {list.length === 0 ? (
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '12px 0' }}>
+            Sin datos en el período.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            {list.map(item => {
+              const pct = total > 0 ? (item.cantidad / total) * 100 : 0;
+              return (
+                <div key={item.nombre}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11.5px', marginBottom: '3px' }}>
+                    <span style={{ color: '#475569', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.nombre}
+                    </span>
+                    <span style={{ color: '#0f172a', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {item.cantidad.toLocaleString()}
+                      <span style={{ color: '#94a3b8', fontWeight: 500 }}> ({item.porcentaje}%)</span>
+                    </span>
+                  </div>
+                  <div style={{ height: '5px', borderRadius: '999px', backgroundColor: '#f1f5f9', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.max(pct, 2)}%`, height: '100%', borderRadius: '999px', backgroundColor: color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -349,7 +610,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 </span>
               </h1>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-                Monitoreo de actividad, recurrencia, búsquedas de paquetes y descargas en el portal.
+                Actividad real del cliente en los últimos {days} días. Los correos automáticos del sistema se contabilizan aparte.
               </p>
             </div>
           </div>
@@ -482,7 +743,13 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             <span style={{ fontWeight: 700, color: '#16a34a' }}>
               {kpis.total_clientes > 0 ? `${Math.round((kpis.activos_periodo / kpis.total_clientes) * 100)}%` : '0%'}
             </span>
-            <span>activos en el período ({kpis.activos_periodo} de {kpis.total_clientes})</span>
+            <span>con actividad real en {days} días ({kpis.activos_periodo} de {kpis.total_clientes})</span>
+          </div>
+          <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
+            <strong style={{ color: '#2563eb' }}>{kpis.total_logins}</strong> login(s) en el período
+          </div>
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+            {renderVariation(kpis.activos_periodo, prev?.activos_periodo)}
           </div>
         </div>
 
@@ -501,6 +768,9 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             <TrendingUp style={{ width: '12px', height: '12px', color: '#059669' }} />
             <span>Consultas WR / Guía / Consignatario</span>
           </div>
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+            {renderVariation(kpis.total_busquedas, prev?.total_busquedas)}
+          </div>
         </div>
 
         {/* KPI 3: Fotos de Almacén Inspeccionadas */}
@@ -517,6 +787,9 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
             <Eye style={{ width: '12px', height: '12px', color: '#ea580c' }} />
             <span>Inspecciones visuales de paquetes</span>
+          </div>
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+            {renderVariation(kpis.total_fotos_vistas, prev?.total_fotos_vistas)}
           </div>
         </div>
 
@@ -535,12 +808,15 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             <Download style={{ width: '12px', height: '12px', color: '#7c3aed' }} />
             <span>Exportaciones a Excel generadas</span>
           </div>
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+            {renderVariation(kpis.total_descargas_excel, prev?.total_descargas_excel)}
+          </div>
         </div>
 
         {/* KPI 5: Correos Enviados a Clientes */}
         <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Correos Enviados</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Correos Automáticos</span>
             <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f0f9ff', border: '1px solid #e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Mail style={{ width: '17px', height: '17px', color: '#0284c7' }} />
             </div>
@@ -550,7 +826,10 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
             <Send style={{ width: '12px', height: '12px', color: '#0284c7' }} />
-            <span>Avisos de almacén y accesos al portal</span>
+            <span>Enviados por el sistema · no cuentan como actividad</span>
+          </div>
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+            {renderVariation(kpis.total_correos_enviados || 0, prev?.total_correos_enviados)}
           </div>
         </div>
 
@@ -573,7 +852,170 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
 
       </div>
 
-      {/* 3. Gráfica de Tendencia Diaria de Uso a Ancho Completo */}
+      {/* 3. Salud de la Base de Clientes */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h3 style={sectionTitleStyle}>Salud de la Base de Clientes</h3>
+            <p style={sectionSubtitleStyle}>Adopción real del portal: quién ingresó, quién nunca lo hizo y quién se está enfriando.</p>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '4px 10px', fontWeight: 600 }}>
+            {kpis.total_clientes} clientes registrados
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px' }}>
+
+          {/* Tasa de activación */}
+          <div style={{ ...kpiCardStyle, borderLeft: '3px solid #10b981' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Tasa de Activación</span>
+              <CheckCircle2 style={{ width: '16px', height: '16px', color: '#10b981' }} />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
+              {kpis.tasa_activacion.toLocaleString()}%
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+              <strong style={{ color: '#059669' }}>{kpis.clientes_activados}</strong> de {kpis.total_clientes} clientes con al menos un login.
+            </div>
+            <div style={{ marginTop: '8px', height: '6px', borderRadius: '999px', backgroundColor: '#f1f5f9', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(kpis.tasa_activacion, 100)}%`, height: '100%', borderRadius: '999px', backgroundColor: '#10b981' }} />
+            </div>
+          </div>
+
+          {/* Nunca ingresaron */}
+          <div style={{ ...kpiCardStyle, borderLeft: '3px solid #f59e0b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Nunca Ingresaron</span>
+              <XCircle style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
+              {kpis.clientes_nunca_ingresaron}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+              Cuentas creadas que no registran ningún inicio de sesión.
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '10.5px', color: '#b45309', fontWeight: 600 }}>
+              Oportunidad de campaña de activación
+            </div>
+          </div>
+
+          {/* En riesgo */}
+          <div style={{ ...kpiCardStyle, borderLeft: '3px solid #dc2626' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Clientes en Riesgo</span>
+              <Clock style={{ width: '16px', height: '16px', color: '#dc2626' }} />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
+              {kpis.clientes_en_riesgo}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+              Ya ingresaron alguna vez, pero llevan más de 30 días sin actividad.
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '10.5px', color: '#b91c1c', fontWeight: 600 }}>
+              Priorizar contacto y seguimiento
+            </div>
+          </div>
+
+          {/* Solo correo */}
+          <div style={{ ...kpiCardStyle, borderLeft: '3px solid #0284c7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Solo Reciben Correos</span>
+              <Mail style={{ width: '16px', height: '16px', color: '#0284c7' }} />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
+              {kpis.clientes_solo_correo}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+              Recibieron notificaciones pero no hicieron ninguna acción en el período.
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '10.5px', color: '#0369a1', fontWeight: 600 }}>
+              El correo no está generando retorno
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* 4. Impacto de las Notificaciones */}
+      <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px 22px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+          <div>
+            <h3 style={sectionTitleStyle}>Impacto de las Notificaciones</h3>
+            <p style={sectionSubtitleStyle}>
+              Atribución simple: se cuenta un correo cuando existe un login posterior del mismo cliente dentro de la ventana. No implica causalidad.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#0369a1', backgroundColor: '#f0f9ff', border: '1px solid #e0f2fe', padding: '4px 10px', borderRadius: '999px', fontWeight: 600 }}>
+            <Mail style={{ width: '12px', height: '12px' }} />
+            {(conversion?.correos_analizados || 0).toLocaleString()} correos analizados
+          </div>
+        </div>
+
+        {conversion && conversion.correos_analizados > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px' }}>
+
+            {[
+              {
+                label: 'Login en 24 horas',
+                tasa: conversion.tasa_24h,
+                hitos: conversion.conversiones_24h,
+                color: '#0284c7',
+                note: 'Ventana corta: intención inmediata tras la notificación.',
+              },
+              {
+                label: 'Login en 72 horas',
+                tasa: conversion.tasa_72h,
+                hitos: conversion.conversiones_72h,
+                color: '#0369a1',
+                note: 'Ventana amplia: incluye decisiones de compra o consulta.',
+              },
+            ].map(item => (
+              <div key={item.label} style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>{item.label}</span>
+                  <Send style={{ width: '14px', height: '14px', color: item.color }} />
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '4px', letterSpacing: '-0.5px' }}>
+                  {item.tasa}%
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                  {item.hitos.toLocaleString()} de {conversion.correos_analizados.toLocaleString()} correos con login posterior.
+                </div>
+                <div style={{ marginTop: '8px', height: '6px', borderRadius: '999px', backgroundColor: '#e2e8f0', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(item.tasa, 100)}%`, height: '100%', borderRadius: '999px', backgroundColor: item.color }} />
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: '7px' }}>{item.note}</div>
+              </div>
+            ))}
+
+            <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Clientes Convertidos</span>
+                <Users style={{ width: '14px', height: '14px', color: '#059669' }} />
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '4px', letterSpacing: '-0.5px' }}>
+                {conversion.clientes_convertidos_24h}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Clientes distintos que volvieron a ingresar dentro de las 24 horas posteriores a un correo.
+              </div>
+              <div style={{ marginTop: '9px', fontSize: '10.5px', color: '#059669', fontWeight: 600 }}>
+                {kpis.clientes_solo_correo > 0
+                  ? `${kpis.clientes_solo_correo} cliente(s) solo reciben correos y no ingresan.`
+                  : 'Todos los clientes notificados muestran actividad.'}
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px 0' }}>
+            Sin correos registrados en el período para calcular conversión.
+          </div>
+        )}
+      </div>
+
+      {/* 5. Gráfica de Tendencia Diaria de Uso a Ancho Completo */}
       <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '20px 22px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
           <div>
@@ -581,11 +1023,11 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               Tendencia de Actividad Diaria
             </h3>
             <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
-              Distribución cronológica de interacciones en los últimos {days} días.
+              Actividad del cliente y correos automáticos de los últimos {days} días. El tooltip separa ambos.
             </p>
           </div>
 
-          {/* Leyenda de Colores con 5 Capas de Métricas */}
+          {/* Leyenda de Colores */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '11px', fontWeight: 600, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#3b82f6' }} />
@@ -602,6 +1044,10 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#8b5cf6' }} />
               <span style={{ color: '#475569' }}>Excels</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#94a3b8' }} />
+              <span style={{ color: '#475569' }}>Otros</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#0284c7' }} />
@@ -659,6 +1105,13 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 {data.tendencia_diaria.map((d, idx) => {
                   const barHeightPct = d.total > 0 ? Math.max((d.total / yAxisMax) * 100, 3) : 0;
                   const isHovered = hoveredBarIndex === idx;
+                  const actividad = d.actividad ?? Math.max(d.total - (d.correos || 0), 0);
+                  const otros = d.otros || 0;
+                  const pctLabel = (value: number) => {
+                    if (!d.total || value <= 0) return '0%';
+                    const p = (value / d.total) * 100;
+                    return p < 1 ? '<1%' : `${Math.round(p)}%`;
+                  };
 
                   // Tooltip alignment: prevent clipping on edges
                   const isNearLeft = idx < 3;
@@ -704,42 +1157,55 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                           <div style={{ fontWeight: 700, borderBottom: '1px solid #334155', paddingBottom: '4px', marginBottom: '6px', fontSize: '11.5px', color: '#f8fafc' }}>
                             📅 {d.dia} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({d.fecha})</span>
                           </div>
-                          <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '6px', fontSize: '12px' }}>
-                            Total: {d.total} {d.total === 1 ? 'actividad' : 'actividades'}
+                          <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '4px', fontSize: '12px' }}>
+                            Total: {d.total} {d.total === 1 ? 'evento' : 'eventos'}
                           </div>
+                          {d.total > 0 && (
+                            <div style={{ fontSize: '10.5px', color: '#cbd5e1', marginBottom: '6px' }}>
+                              Actividad cliente: <b style={{ color: '#ffffff' }}>{actividad}</b> ({pctLabel(actividad)})
+                              {' · '}
+                              Correos: <b style={{ color: '#ffffff' }}>{d.correos || 0}</b> ({pctLabel(d.correos || 0)})
+                            </div>
+                          )}
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '3px', fontSize: '11px' }}>
                             {d.logins > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                                 <span style={{ color: '#60a5fa' }}>● Logins:</span>
-                                <b style={{ color: '#ffffff' }}>{d.logins}</b>
+                                <b style={{ color: '#ffffff' }}>{d.logins} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.logins)})</span></b>
                               </div>
                             )}
                             {d.busquedas > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                                 <span style={{ color: '#34d399' }}>● Búsquedas:</span>
-                                <b style={{ color: '#ffffff' }}>{d.busquedas}</b>
+                                <b style={{ color: '#ffffff' }}>{d.busquedas} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.busquedas)})</span></b>
                               </div>
                             )}
                             {d.fotos > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                                 <span style={{ color: '#fb923c' }}>● Fotos Vistas:</span>
-                                <b style={{ color: '#ffffff' }}>{d.fotos}</b>
+                                <b style={{ color: '#ffffff' }}>{d.fotos} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.fotos)})</span></b>
                               </div>
                             )}
                             {d.excels > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                                 <span style={{ color: '#c084fc' }}>● Excels:</span>
-                                <b style={{ color: '#ffffff' }}>{d.excels}</b>
+                                <b style={{ color: '#ffffff' }}>{d.excels} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.excels)})</span></b>
+                              </div>
+                            )}
+                            {otros > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ color: '#cbd5e1' }}>● Otras acciones:</span>
+                                <b style={{ color: '#ffffff' }}>{otros} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(otros)})</span></b>
                               </div>
                             )}
                             {(d.correos || 0) > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <span style={{ color: '#38bdf8' }}>● Correos:</span>
-                                <b style={{ color: '#ffffff' }}>{d.correos}</b>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderTop: '1px solid #334155', paddingTop: '4px', marginTop: '2px' }}>
+                                <span style={{ color: '#38bdf8' }}>✉️ Correos automáticos:</span>
+                                <b style={{ color: '#ffffff' }}>{d.correos} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.correos || 0)})</span></b>
                               </div>
                             )}
                             {d.total === 0 && (
-                              <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin actividad registrada</div>
+                              <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin eventos registrados</div>
                             )}
                           </div>
                         </div>
@@ -765,6 +1231,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                           {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
                           {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
                           {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
+                          {otros > 0 && <div style={{ height: `${(otros / d.total) * 100}%`, backgroundColor: '#94a3b8' }} />}
                           {(d.correos || 0) > 0 && <div style={{ height: `${((d.correos || 0) / d.total) * 100}%`, backgroundColor: '#0284c7' }} />}
                         </div>
                       ) : (
@@ -823,7 +1290,223 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
         )}
       </div>
 
-      {/* 4. Tabla de Directorio Completo de Clientes y Auditoría de Uso */}
+      {/* 6. Comportamiento de Uso */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h3 style={sectionTitleStyle}>Comportamiento de Uso</h3>
+            <p style={sectionSubtitleStyle}>
+              Desde qué dispositivo y navegador ingresan los clientes, y en qué horario se concentra la actividad real.
+            </p>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '4px 10px', fontWeight: 600 }}>
+            Solo actividad del cliente · sin correos automáticos
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+          {renderDistributionCard(
+            'Dispositivos',
+            'Participación sobre eventos de cliente',
+            distribucion?.dispositivos,
+            <Monitor style={{ width: '15px', height: '15px', color: '#7c3aed' }} />,
+            '#7c3aed'
+          )}
+
+          {renderDistributionCard(
+            'Navegadores',
+            'Participación sobre eventos de cliente',
+            distribucion?.navegadores,
+            <Layers style={{ width: '15px', height: '15px', color: '#0891b2' }} />,
+            '#0891b2'
+          )}
+
+          {/* Mapa de horas pico */}
+          <div style={kpiCardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Hora Pico</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>Eventos de cliente por hora (hora Perú)</div>
+              </div>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: '#6366f114', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock style={{ width: '15px', height: '15px', color: '#6366f1' }} />
+              </div>
+            </div>
+
+            {horas.length === 0 ? (
+              <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '12px 0' }}>
+                Sin datos en el período.
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '104px' }}>
+                  {horas.map(h => {
+                    const heightPct = maxHourCount > 0 ? (h.cantidad / maxHourCount) * 100 : 0;
+                    return (
+                      <div
+                        key={h.hora}
+                        title={`${String(h.hora).padStart(2, '0')}:00 — ${h.cantidad} evento(s)`}
+                        style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end' }}
+                      >
+                        <div
+                          style={{
+                            width: '100%',
+                            height: `${h.cantidad > 0 ? Math.max(heightPct, 6) : 2}%`,
+                            borderRadius: '2px 2px 0 0',
+                            backgroundColor: h.cantidad > 0 ? '#6366f1' : '#f1f5f9',
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: '#94a3b8', marginTop: '4px' }}>
+                  <span>00 h</span>
+                  <span>06 h</span>
+                  <span>12 h</span>
+                  <span>18 h</span>
+                  <span>23 h</span>
+                </div>
+                <div style={{ marginTop: '9px', fontSize: '10.5px', color: '#64748b' }}>
+                  <strong style={{ color: '#4338ca' }}>Horas pico:</strong>{' '}
+                  {horasPico.length > 0
+                    ? horasPico.map(h => `${String(h.hora).padStart(2, '0')}:00 (${h.cantidad})`).join(' · ')
+                    : 'sin actividad registrada'}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 7. Oportunidades de Recuperación */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h3 style={sectionTitleStyle}>Oportunidades de Recuperación</h3>
+            <p style={sectionSubtitleStyle}>
+              Clientes accionables: cuentas que dejaron de entrar y clientes con volumen de paquetes pero bajo uso del portal.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
+
+          {/* Clientes a recuperar */}
+          <div style={{ ...kpiCardStyle, padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Clientes a Recuperar</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
+                  En riesgo (+30 días sin actividad) o que nunca ingresaron
+                </div>
+              </div>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: '#fef2f214', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock style={{ width: '15px', height: '15px', color: '#dc2626' }} />
+              </div>
+            </div>
+
+            {clientesEnRiesgoTop.length === 0 && nuncaIngresaronTop.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 12px' }}>
+                <CheckCircle2 style={{ width: '15px', height: '15px' }} />
+                No hay clientes en riesgo ni cuentas sin login.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {clientesEnRiesgoTop.map(c => (
+                  <div key={`riesgo-${c.email}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.nombre_completo}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.email} · {c.paquetes_estimados.toLocaleString()} paquete(s)
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#b91c1c', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '999px', padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                      {c.dias_sin_actividad ?? 0} d sin actividad
+                    </span>
+                  </div>
+                ))}
+
+                {nuncaIngresaronTop.map(c => (
+                  <div key={`nunca-${c.email}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.nombre_completo}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.email} · {c.correos_enviados.toLocaleString()} correo(s) recibido(s)
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#b45309', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '999px', padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                      Nunca ingresó
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Más paquetes, menos uso */}
+          <div style={{ ...kpiCardStyle, padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Más Paquetes, Menos Uso</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
+                  Menor actividad por paquete · la barra muestra eventos reales
+                </div>
+              </div>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: '#fff7ed14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Package style={{ width: '15px', height: '15px', color: '#ea580c' }} />
+              </div>
+            </div>
+
+            {oportunidadesTop.length === 0 ? (
+              <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '12px 0' }}>
+                Sin clientes con paquetes registrados.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+                {oportunidadesTop.map(c => {
+                  const pctEventos = (c.total_eventos / maxClientEvents) * 100;
+                  const ratio = c.total_eventos / (c.paquetes_estimados || 1);
+                  const ratioLabel = ratio === 0 ? '0' : ratio < 0.1 ? '<0.1' : String(Math.round(ratio * 10) / 10);
+                  return (
+                    <div key={`paquetes-${c.email}`}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11.5px', marginBottom: '3px' }}>
+                        <span style={{ color: '#0f172a', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {c.nombre_completo}
+                        </span>
+                        <span style={{ color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {c.paquetes_estimados.toLocaleString()} pkg · {c.total_eventos.toLocaleString()} ev.
+                        </span>
+                      </div>
+                      {c.total_eventos === 0 ? (
+                        <div style={{ fontSize: '9.5px', color: '#dc2626', fontWeight: 600 }}>
+                          Sin actividad en el período
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ flex: 1, height: '6px', borderRadius: '999px', backgroundColor: '#f1f5f9', overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.max(pctEventos, 3)}%`, height: '100%', borderRadius: '999px', backgroundColor: '#f97316' }} />
+                          </div>
+                          <span style={{ fontSize: '9.5px', color: '#94a3b8', whiteSpace: 'nowrap', minWidth: '54px', textAlign: 'right' }}>
+                            {ratioLabel} ev/pkg
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* 8. Tabla de Directorio Completo de Clientes y Auditoría de Uso */}
       <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', overflow: 'hidden' }}>
         
         {/* Cabecera de la Tabla y Filtros */}
@@ -897,14 +1580,23 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                 <th style={{ padding: '12px 16px' }}>Cliente</th>
-                <th style={{ padding: '12px 14px', cursor: 'pointer' }} onClick={() => { setSortField('ultimo_acceso'); setSortAsc(!sortAsc); }}>
+                <th style={{ padding: '12px 14px', cursor: 'pointer' }} onClick={() => { setSortField('ultimo_login'); setSortAsc(!sortAsc); }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span>Último Acceso</span>
-                    {sortField === 'ultimo_acceso' && <span>{sortAsc ? '↑' : '↓'}</span>}
+                    <span>Último Login</span>
+                    {sortField === 'ultimo_login' && <span>{sortAsc ? '↑' : '↓'}</span>}
                   </div>
                 </th>
-                <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('logins'); setSortAsc(!sortAsc); }}>
-                  Logins
+                <th style={{ padding: '12px 14px', cursor: 'pointer' }} onClick={() => { setSortField('ultima_actividad'); setSortAsc(!sortAsc); }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>Última Actividad</span>
+                    {sortField === 'ultima_actividad' && <span>{sortAsc ? '↑' : '↓'}</span>}
+                  </div>
+                </th>
+                <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('logins'); setSortAsc(!sortAsc); }} title={`Inicios de sesión acumulados en los últimos ${days} días`}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                    <span>Logins ({days} d)</span>
+                    {sortField === 'logins' && <span>{sortAsc ? '↑' : '↓'}</span>}
+                  </div>
                 </th>
                 <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('busquedas'); setSortAsc(!sortAsc); }}>
                   Búsquedas
@@ -915,9 +1607,9 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('descargas_excel'); setSortAsc(!sortAsc); }}>
                   Excels
                 </th>
-                <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('correos_enviados'); setSortAsc(!sortAsc); }}>
+                <th style={{ padding: '12px 10px', textAlign: 'center', cursor: 'pointer' }} onClick={() => { setSortField('correos_enviados'); setSortAsc(!sortAsc); }} title="Correos automáticos enviados por el sistema; no cuentan como actividad del cliente">
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                    <span>Correos</span>
+                    <span>Correos Auto.</span>
                     {sortField === 'correos_enviados' && <span>{sortAsc ? '↑' : '↓'}</span>}
                   </div>
                 </th>
@@ -981,17 +1673,34 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                         </div>
                       </td>
 
-                      {/* Último Acceso */}
+                      {/* Último Login (histórico) */}
                       <td style={{ padding: '12px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Clock style={{ width: '13px', height: '13px', color: c.ultimo_acceso ? '#10b981' : '#94a3b8' }} />
+                          <Clock style={{ width: '13px', height: '13px', color: c.ultimo_login ? '#10b981' : '#94a3b8' }} />
                           <div>
                             <div style={{ fontWeight: 600, color: '#1e293b' }}>
-                              {formatTimeAgo(c.ultimo_acceso)}
+                              {c.ultimo_login ? formatTimeAgo(c.ultimo_login) : 'Nunca inició sesión'}
                             </div>
-                            {c.ultimo_acceso && (
+                            {c.ultimo_login && (
                               <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>
-                                {new Date(c.ultimo_acceso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                                {new Date(c.ultimo_login).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Última Actividad real del cliente dentro del período */}
+                      <td style={{ padding: '12px 14px' }} title="Actividad del cliente dentro del período seleccionado; no incluye correos automáticos del sistema">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Activity style={{ width: '13px', height: '13px', color: c.ultima_actividad ? '#ea580c' : '#94a3b8' }} />
+                          <div>
+                            <div style={{ fontWeight: 600, color: c.ultima_actividad ? '#1e293b' : '#94a3b8' }}>
+                              {c.ultima_actividad ? formatTimeAgo(c.ultima_actividad) : 'Sin actividad'}
+                            </div>
+                            {c.ultima_actividad && (
+                              <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                                {new Date(c.ultima_actividad).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
                               </div>
                             )}
                           </div>
@@ -1033,7 +1742,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                             fontSize: '11px',
                             fontWeight: 700,
                           }}
-                          title={`${c.correos_enviados || 0} correo(s) enviados`}
+                          title={`${c.correos_enviados || 0} correo(s) automáticos enviados por el sistema`}
                         >
                           <Mail style={{ width: '11px', height: '11px', color: '#0284c7' }} />
                           <span>{c.correos_enviados || 0}</span>
@@ -1120,7 +1829,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 })
               ) : (
                 <tr>
-                  <td colSpan={10} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                  <td colSpan={11} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                     No se encontraron clientes que coincidan con el filtro actual.
                   </td>
                 </tr>
@@ -1194,6 +1903,94 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               </button>
             </div>
 
+            {/* Filtros del historial */}
+            <div style={{ padding: '12px 22px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Tipo de evento</label>
+                <select
+                  value={auditEventType}
+                  onChange={e => setAuditEventType(e.target.value)}
+                  style={{ padding: '6px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', backgroundColor: '#ffffff', cursor: 'pointer' }}
+                >
+                  <option value="ALL">Todos los eventos</option>
+                  <option value="LOGIN_EXITOSO">Inicios de sesión</option>
+                  <option value="BUSQUEDA_INVENTARIO">Búsquedas</option>
+                  <option value="VER_FOTO_ALMACEN">Fotos de almacén</option>
+                  <option value="EXPORTAR_EXCEL">Descargas Excel</option>
+                  <option value="FILTRO_ESTADO">Filtros de estado</option>
+                  <option value="CONSULTA_DETALLE">Consultas de detalle</option>
+                  <option value="EMAIL_ENVIADO">Correos automáticos</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Desde</label>
+                <input
+                  type="date"
+                  value={auditFrom}
+                  max={auditTo || undefined}
+                  onChange={e => setAuditFrom(e.target.value)}
+                  style={{ padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Hasta</label>
+                <input
+                  type="date"
+                  value={auditTo}
+                  min={auditFrom || undefined}
+                  onChange={e => setAuditTo(e.target.value)}
+                  style={{ padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a' }}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={applyAuditFilters}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '7px 12px',
+                  backgroundColor: '#0f172a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <Filter style={{ width: '12px', height: '12px' }} />
+                <span>Aplicar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuditEventType('ALL');
+                  setAuditFrom('');
+                  setAuditTo('');
+                  if (selectedClientForAudit) {
+                    fetchClientAudit(selectedClientForAudit, { eventType: 'ALL', from: '', to: '', offset: 0 });
+                  }
+                }}
+                style={{
+                  padding: '7px 12px',
+                  backgroundColor: '#ffffff',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Limpiar
+              </button>
+            </div>
+
             {/* Modal Body / Timeline */}
             <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {isLoadingAudit ? (
@@ -1228,6 +2025,10 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                       badgeColor = '#0891b2';
                       badgeBg = '#ecfeff';
                       label = 'Filtro por Estado';
+                    } else if (evt.tipo_evento === 'CONSULTA_DETALLE') {
+                      badgeColor = '#0d9488';
+                      badgeBg = '#f0fdfa';
+                      label = 'Consulta de Detalle';
                     } else if (evt.tipo_evento === 'EMAIL_ENVIADO') {
                       badgeColor = '#0284c7';
                       badgeBg = '#f0f9ff';
@@ -1299,29 +2100,77 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 </div>
               ) : (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: '13px' }}>
-                  No hay eventos registrados aún para este cliente.
+                  No hay eventos que coincidan con los filtros seleccionados.
                 </div>
               )}
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: '14px 22px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f8fafc' }}>
-              <button
-                type="button"
-                onClick={() => setSelectedClientForAudit(null)}
-                style={{
-                  padding: '7px 18px',
-                  backgroundColor: '#0f172a',
-                  color: '#ffffff',
-                  borderRadius: '6px',
-                  border: 'none',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cerrar
-              </button>
+            <div style={{ padding: '12px 22px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', backgroundColor: '#f8fafc', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                {auditTotal > 0 ? (
+                  <>
+                    Mostrando <strong>{auditOffset + 1}–{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditTotal)}</strong> de <strong>{auditTotal}</strong> eventos
+                  </>
+                ) : (
+                  'Sin eventos'
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => changeAuditPage(Math.max(auditOffset - AUDIT_PAGE_SIZE, 0))}
+                  disabled={isLoadingAudit || auditOffset === 0}
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: isLoadingAudit || auditOffset === 0 ? '#94a3b8' : '#334155',
+                    cursor: isLoadingAudit || auditOffset === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Anterior
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => changeAuditPage(auditOffset + AUDIT_PAGE_SIZE)}
+                  disabled={isLoadingAudit || auditOffset + AUDIT_PAGE_SIZE >= auditTotal}
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: isLoadingAudit || auditOffset + AUDIT_PAGE_SIZE >= auditTotal ? '#94a3b8' : '#334155',
+                    cursor: isLoadingAudit || auditOffset + AUDIT_PAGE_SIZE >= auditTotal ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Siguiente
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedClientForAudit(null)}
+                  style={{
+                    padding: '7px 18px',
+                    backgroundColor: '#0f172a',
+                    color: '#ffffff',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
