@@ -150,33 +150,62 @@ export async function GET(req: NextRequest) {
       catalogMap.set((c.nombre || '').toUpperCase().trim(), c);
     });
 
-    // 4. Eventos del período actual y del período anterior (para comparativas)
+    // 4. Eventos del período actual y del período anterior (paginado para superar el límite de 1000 de Supabase)
     const previousCutoffIso = new Date(
       cutoffDate.getTime() - safeDays * DAY_MS
     ).toISOString();
 
-    const [currentEventsRes, previousEventsRes] = await Promise.all([
-      portalAdmin
-        .from('portal_eventos_uso')
-        .select('id, usuario_email, nombre_cliente, tipo_evento, detalles, dispositivo, navegador, creado_en')
-        .gte('creado_en', cutoffIso)
-        .order('creado_en', { ascending: false }),
-      portalAdmin
-        .from('portal_eventos_uso')
-        .select('usuario_email, tipo_evento, creado_en')
-        .gte('creado_en', previousCutoffIso)
-        .lt('creado_en', cutoffIso)
-        .order('creado_en', { ascending: false }),
-    ]);
+    const fetchFullEvents = async (
+      selectCols: string,
+      gteIso: string,
+      ltIso?: string
+    ) => {
+      const all: any[] = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        let query = portalAdmin
+          .from('portal_eventos_uso')
+          .select(selectCols)
+          .gte('creado_en', gteIso)
+          .order('creado_en', { ascending: false })
+          .range(from, from + step - 1);
 
-    if (currentEventsRes.error || previousEventsRes.error) {
-      const queryError = currentEventsRes.error || previousEventsRes.error;
+        if (ltIso) {
+          query = query.lt('creado_en', ltIso);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          console.error('[Analiticas API Error]', error);
+          throw error;
+        }
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
+      return all;
+    };
+
+    let eventsData: any[] = [];
+    let previousEventsData: any[] = [];
+    try {
+      [eventsData, previousEventsData] = await Promise.all([
+        fetchFullEvents(
+          'id, usuario_email, nombre_cliente, tipo_evento, detalles, dispositivo, navegador, creado_en',
+          cutoffIso
+        ),
+        fetchFullEvents(
+          'usuario_email, tipo_evento, creado_en',
+          previousCutoffIso,
+          cutoffIso
+        ),
+      ]);
+    } catch (queryError: any) {
       console.error('[Analiticas API Error]', queryError);
       return NextResponse.json({ error: queryError?.message || 'Error al consultar eventos' }, { status: 500 });
     }
-
-    const eventsData = currentEventsRes.data;
-    const previousEventsData = previousEventsRes.data;
 
     // Excluir eventos de administradores para que no contaminen KPIs, gráficas ni promedios
     const events = (eventsData || []).filter(ev => !isSuperadminEmail(ev.usuario_email));
@@ -523,6 +552,7 @@ export async function GET(req: NextRequest) {
         en_riesgo: enRiesgo,
         nunca_ingreso: nuncaIngreso,
         total_eventos: stat.totalEventos,
+        total_interacciones: stat.totalEventos + (stat.correos || 0),
         logins: stat.logins,
         busquedas: stat.busquedas,
         fotos_vistas: stat.fotos,

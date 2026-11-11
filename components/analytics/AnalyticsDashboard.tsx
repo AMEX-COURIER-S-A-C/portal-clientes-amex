@@ -115,6 +115,7 @@ interface ClienteAnalitica {
   en_riesgo?: boolean;
   nunca_ingreso?: boolean;
   total_eventos: number;
+  total_interacciones?: number;
   logins: number;
   busquedas: number;
   fotos_vistas: number;
@@ -162,7 +163,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   // Filtros de tabla
   const [searchFilter, setSearchFilter] = useState('');
   const [activityStatusFilter, setActivityStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [sortField, setSortField] = useState<keyof ClienteAnalitica>('total_eventos');
+  const [sortField, setSortField] = useState<keyof ClienteAnalitica>('total_interacciones' as any);
   const [sortAsc, setSortAsc] = useState<boolean>(false);
 
   // Modal de auditoría por cliente
@@ -334,8 +335,12 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
 
     // Ordenamiento
     list.sort((a, b) => {
-      const valA = a[sortField];
-      const valB = b[sortField];
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+      if (sortField === ('total_interacciones' as any) || sortField === 'total_eventos') {
+        valA = a.total_interacciones ?? (a.total_eventos + (a.correos_enviados || 0));
+        valB = b.total_interacciones ?? (b.total_eventos + (b.correos_enviados || 0));
+      }
       if (typeof valA === 'number' && typeof valB === 'number') {
         return sortAsc ? valA - valB : valB - valA;
       }
@@ -359,12 +364,13 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       'Estado Cuenta',
       'Ultimo Login',
       'Ultima Actividad (periodo)',
-      'Total Actividad Cliente',
+      'Total Actividad Web',
+      'Correos Automaticos',
+      'Total Interacciones Combinadas',
       `Logins (${days} dias)`,
       'Busquedas',
       'Fotos Vistas',
       'Descargas Excel',
-      'Correos Automaticos',
       'Dispositivo Frecuente',
       'Paquetes Estimados',
     ];
@@ -376,11 +382,12 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       `"${formatFullDate(c.ultimo_login)}"`,
       `"${formatFullDate(c.ultima_actividad)}"`,
       c.total_eventos,
+      c.correos_enviados || 0,
+      (c.total_interacciones ?? (c.total_eventos + (c.correos_enviados || 0))),
       c.logins,
       c.busquedas,
       c.fotos_vistas,
       c.descargas_excel,
-      c.correos_enviados || 0,
       `"${c.dispositivo_frecuente}"`,
       c.paquetes_estimados,
     ]);
@@ -412,6 +419,12 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   const maxClientEvents = useMemo(() => {
     if (!data?.clientes?.length) return 1;
     const max = Math.max(...data.clientes.map(c => c.total_eventos));
+    return max > 0 ? max : 1;
+  }, [data?.clientes]);
+
+  const maxClientInteractions = useMemo(() => {
+    if (!data?.clientes?.length) return 1;
+    const max = Math.max(...data.clientes.map(c => (c.total_interacciones ?? (c.total_eventos + (c.correos_enviados || 0)))));
     return max > 0 ? max : 1;
   }, [data?.clientes]);
 
@@ -1613,10 +1626,16 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                     {sortField === 'correos_enviados' && <span>{sortAsc ? '↑' : '↓'}</span>}
                   </div>
                 </th>
-                <th style={{ padding: '12px 16px', minWidth: '160px', cursor: 'pointer' }} onClick={() => { setSortField('total_eventos'); setSortAsc(!sortAsc); }}>
+                <th
+                  style={{ padding: '12px 16px', minWidth: '170px', cursor: 'pointer' }}
+                  onClick={() => { setSortField('total_interacciones' as any); setSortAsc(!sortAsc); }}
+                  title="Nivel de interacción combinada (acciones del cliente en el portal + correos automáticos notificados)"
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>Nivel Actividad</span>
-                    {sortField === 'total_eventos' && <span>{sortAsc ? '↑' : '↓'}</span>}
+                    {(sortField === ('total_interacciones' as any) || sortField === 'total_eventos') && (
+                      <span>{sortAsc ? '↑' : '↓'}</span>
+                    )}
                   </div>
                 </th>
                 <th style={{ padding: '12px 14px' }}>Dispositivo</th>
@@ -1627,7 +1646,10 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             <tbody>
               {filteredClients.length > 0 ? (
                 filteredClients.map((c, i) => {
-                  const activityPct = Math.round((c.total_eventos / maxClientEvents) * 100);
+                  const totalInteracciones = c.total_interacciones ?? (c.total_eventos + (c.correos_enviados || 0));
+                  const webPct = maxClientInteractions > 0 ? (c.total_eventos / maxClientInteractions) * 100 : 0;
+                  const mailPct = maxClientInteractions > 0 ? ((c.correos_enviados || 0) / maxClientInteractions) * 100 : 0;
+                  const totalPct = Math.min(100, Math.round((totalInteracciones / maxClientInteractions) * 100));
                   const isMobile = c.dispositivo_frecuente.toLowerCase().includes('móvil') || c.dispositivo_frecuente.toLowerCase().includes('movil');
                   const isTablet = c.dispositivo_frecuente.toLowerCase().includes('tablet');
 
@@ -1749,21 +1771,65 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                         </span>
                       </td>
 
-                      {/* Nivel de Actividad Visual */}
-                      <td style={{ padding: '12px 16px' }}>
+                      {/* Nivel de Actividad Visual Combinado */}
+                      <td
+                        style={{ padding: '12px 16px' }}
+                        title={`${c.nombre_completo}: ${c.total_eventos} acciones en portal + ${c.correos_enviados || 0} correos automáticos = ${totalInteracciones} interacciones totales`}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ flex: 1, height: '6px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
-                            <div
-                              style={{
-                                height: '100%',
-                                width: `${Math.max(activityPct, c.total_eventos > 0 ? 5 : 0)}%`,
-                                backgroundColor: activityPct > 50 ? '#10b981' : activityPct > 20 ? '#3b82f6' : '#f59e0b',
-                                borderRadius: '999px',
-                              }}
-                            />
+                          <div
+                            style={{
+                              flex: 1,
+                              height: '7px',
+                              backgroundColor: '#e2e8f0',
+                              borderRadius: '999px',
+                              overflow: 'hidden',
+                              display: 'flex',
+                              cursor: 'help',
+                            }}
+                          >
+                            {/* Segmento 1: Acciones Web en el portal */}
+                            {c.total_eventos > 0 && (
+                              <div
+                                style={{
+                                  height: '100%',
+                                  width: `${webPct}%`,
+                                  backgroundColor: totalPct > 50 ? '#10b981' : totalPct > 20 ? '#3b82f6' : '#f59e0b',
+                                  borderTopLeftRadius: '999px',
+                                  borderBottomLeftRadius: '999px',
+                                  borderTopRightRadius: (c.correos_enviados || 0) > 0 ? '0' : '999px',
+                                  borderBottomRightRadius: (c.correos_enviados || 0) > 0 ? '0' : '999px',
+                                }}
+                                title={`${c.total_eventos} acciones en portal`}
+                              />
+                            )}
+                            {/* Segmento 2: Correos automáticos enviados */}
+                            {(c.correos_enviados || 0) > 0 && (
+                              <div
+                                style={{
+                                  height: '100%',
+                                  width: `${mailPct}%`,
+                                  backgroundColor: '#38bdf8',
+                                  borderTopLeftRadius: c.total_eventos > 0 ? '0' : '999px',
+                                  borderBottomLeftRadius: c.total_eventos > 0 ? '0' : '999px',
+                                  borderTopRightRadius: '999px',
+                                  borderBottomRightRadius: '999px',
+                                }}
+                                title={`${c.correos_enviados || 0} correos automáticos`}
+                              />
+                            )}
                           </div>
-                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569', minWidth: '40px', textAlign: 'right' }}>
-                            {c.total_eventos} act.
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: '#334155',
+                              minWidth: '48px',
+                              textAlign: 'right',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {totalInteracciones} act.
                           </span>
                         </div>
                       </td>
