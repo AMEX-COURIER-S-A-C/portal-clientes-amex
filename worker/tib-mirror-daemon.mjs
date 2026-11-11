@@ -9,6 +9,7 @@
  */
 
 import fs from 'node:fs';
+import { createHmac } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
@@ -86,6 +87,22 @@ const SUPERADMIN_EMAILS = new Set([
   'gerencia@amexcourierperu.com',
 ]);
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
+
+// Fotos para clientes: enlace firmado al proxy del portal (oculta el dominio de TIB).
+// Si PHOTO_LINK_SECRET no está configurado, se usa el enlace directo de TIB como respaldo.
+const PHOTO_LINK_SECRET = process.env.PHOTO_LINK_SECRET || '';
+const PHOTO_PORTAL_BASE_URL = (process.env.NEXT_PUBLIC_PORTAL_URL || 'https://clientes.sistemaamexcourier.online').replace(/\/+$/, '');
+
+function clientPhotoUrl(wr, index, rawUrl) {
+  if (!PHOTO_LINK_SECRET) {
+    return rawUrl.startsWith('http') ? rawUrl : TIB_MEDIA_BASE_URL + rawUrl.replace(/^\/+/, '');
+  }
+  const token = createHmac('sha256', PHOTO_LINK_SECRET)
+    .update(`${String(wr).toUpperCase()}.${index}`)
+    .digest('base64url')
+    .slice(0, 32);
+  return `${PHOTO_PORTAL_BASE_URL}/api/foto/${encodeURIComponent(String(wr).toUpperCase())}/${index + 1}?t=${token}`;
+}
 // Cadencia Dual:
 // - Ciclo Express: Consulta RECIBIDOS cada 1 minuto (ultrarrápido, ~1s)
 // - Ciclo Completo: Consulta RECIBIDO + ENVIADO + ENTREGADO cada 15 ciclos (~15 min)
@@ -399,8 +416,8 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                       ${fotoUrl.split(',').map((u) => u.trim()).filter(Boolean).map((u, i, arr) => `
                         <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; text-align: center;">
-                          <a href="${u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')}" target="_blank" rel="noopener noreferrer" style="display: block; text-decoration: none;">
-                            <img src="${u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')}" alt="Foto ${wr} ${arr.length > 1 ? '(' + (i + 1) + '/' + arr.length + ')' : ''}" style="max-width: 100%; max-height: 240px; border-radius: 6px; display: block; margin: 0 auto; object-fit: contain; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" />
+                          <a href="${clientPhotoUrl(wr, i, u)}" target="_blank" rel="noopener noreferrer" style="display: block; text-decoration: none;">
+                            <img src="${clientPhotoUrl(wr, i, u)}" alt="Foto ${wr} ${arr.length > 1 ? '(' + (i + 1) + '/' + arr.length + ')' : ''}" style="max-width: 100%; max-height: 240px; border-radius: 6px; display: block; margin: 0 auto; object-fit: contain; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" />
                             <span style="display: inline-block; margin-top: 8px; font-size: 11.5px; font-weight: 700; color: #ea580c;">
                               🔍 Clic aquí para ver foto ${arr.length > 1 ? (i + 1) : ''} en tamaño original →
                             </span>
