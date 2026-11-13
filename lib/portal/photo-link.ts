@@ -19,3 +19,12 @@ export function verifyPhotoToken(wr: string, index: number, token: string, secre
   const received = Buffer.from(token);
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
+
+/**
+ * Construye la ruta relativa firmada hacia el proxy /api/foto/<WR>/<n>?t=<token>.
+ */
+export function buildSignedPhotoPath(wr: string, index: number, secret: string): string {
+  const cleanWr = wr.trim().toUpperCase();
+  const token = signPhotoToken(cleanWr, index, secret);
+  return `/api/foto/${encodeURIComponent(cleanWr)}/${index + 1}?t=${token}`;
+}

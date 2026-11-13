@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { parseTibImageUrls } from '@/lib/portal/photo-urls';
 import ExcelExportDropdown from '@/components/ExcelExportDropdown';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
 import AnalyticsDashboard from '@/components/analytics/AnalyticsDashboard';
@@ -71,21 +72,6 @@ interface ClientePortalItem {
 
 const TIPOS_EMPAQUE = ['CAJA', 'SOBRE', 'BOLSA'];
 const ESTADOS_DISPONIBLES = ['RECIBIDO', 'ENVIADO', 'ENTREGADO'];
-const TIB_AJAX_BASE = 'https://www.tibcourier.com/global-courier/ajax/';
-
-function parseTibImageUrls(rawUrl?: string | null): string[] {
-  if (!rawUrl) return [];
-  return rawUrl
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0 && !part.includes('sin_imagen') && part !== 'null' && part !== 'undefined')
-    .map((part) => {
-      if (part.startsWith('http://') || part.startsWith('https://')) {
-        return part;
-      }
-      return `${TIB_AJAX_BASE}${part.replace(/^\/+/, '')}`;
-    });
-}
 
 export default function ClienteDashboardTIB() {
   const router = useRouter();
@@ -134,6 +120,8 @@ export default function ClienteDashboardTIB() {
 
   // Modal para ver foto
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; wr: string } | null>(null);
+  const [openingPhotoIndex, setOpeningPhotoIndex] = useState<number | null>(null);
+  const [photoOpenError, setPhotoOpenError] = useState<string | null>(null);
 
   // Estados de los Módulos de Superadmin: Agregar Cliente y Lista de Clientes
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -196,6 +184,8 @@ export default function ClienteDashboardTIB() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSelectedPhoto(null);
+        setOpeningPhotoIndex(null);
+        setPhotoOpenError(null);
         setUserMenuOpen(false);
         setIsAddClientOpen(false);
         setIsClientsListOpen(false);
@@ -531,6 +521,61 @@ export default function ClienteDashboardTIB() {
       subscription.unsubscribe();
     };
   }, [router, fetchPaquetes, fetchTotalSystemCount, fetchClientsList]);
+
+  const closePhotoModal = useCallback(() => {
+    setSelectedPhoto(null);
+    setOpeningPhotoIndex(null);
+    setPhotoOpenError(null);
+  }, []);
+
+  const handleOpenOriginalPhoto = useCallback(async (wr: string, photoIndex: number) => {
+    setPhotoOpenError(null);
+    setOpeningPhotoIndex(photoIndex);
+    // Abrir la pestaña síncronamente dentro del clic evita bloqueos de popups en Safari/iOS.
+    const popup = window.open('', '_blank');
+
+    try {
+      const { data: { session } } = await supabasePortal.auth.getSession();
+      if (!session?.access_token) {
+        popup?.close();
+        setPhotoOpenError('Tu sesión expiró. Recarga la página para ver la foto.');
+        return;
+      }
+
+      const res = await fetch('/api/foto/sign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ wr, index: photoIndex }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) {
+        popup?.close();
+        setPhotoOpenError(json?.error || 'No se pudo abrir la foto en tamaño original.');
+        return;
+      }
+
+      if (popup) {
+        if (!popup.closed) {
+          popup.opener = null;
+          popup.location.href = json.url;
+        }
+      } else {
+        const opened = window.open(json.url, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          setPhotoOpenError('El navegador bloqueó la nueva pestaña. Permite ventanas emergentes e intenta de nuevo.');
+        }
+      }
+    } catch {
+      popup?.close();
+      setPhotoOpenError('Error de conexión al abrir la foto en tamaño original.');
+    } finally {
+      setOpeningPhotoIndex(null);
+    }
+  }, []);
 
   // Manejo de refresh manual
   const handleManualRefresh = () => {
@@ -2316,6 +2361,8 @@ export default function ClienteDashboardTIB() {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    setPhotoOpenError(null);
+                                    setOpeningPhotoIndex(null);
                                     setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega });
                                     trackPortalEvent({
                                       usuario_email: user?.email,
@@ -3309,7 +3356,7 @@ export default function ClienteDashboardTIB() {
       {/* Modal de Foto Flotante */}
       {selectedPhoto && (
         <div 
-          onClick={() => setSelectedPhoto(null)}
+          onClick={closePhotoModal}
           style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(4px)' }}
         >
           <div 
@@ -3335,7 +3382,7 @@ export default function ClienteDashboardTIB() {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedPhoto(null)}
+                onClick={closePhotoModal}
                 style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <X style={{ width: '18px', height: '18px' }} />
@@ -3351,15 +3398,27 @@ export default function ClienteDashboardTIB() {
                   {arr.length > 1 && (
                     <div style={{ width: '100%', padding: '6px 12px', backgroundColor: '#1e293b', color: '#cbd5e1', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span>Foto {photoIdx + 1} de {arr.length}</span>
-                      <a
-                        href={imgUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: '#fb923c', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenOriginalPhoto(selectedPhoto.wr, photoIdx)}
+                        disabled={openingPhotoIndex !== null}
+                        style={{
+                          color: '#fb923c',
+                          background: 'transparent',
+                          border: 'none',
+                          padding: 0,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: openingPhotoIndex !== null ? 'wait' : 'pointer',
+                          opacity: openingPhotoIndex !== null && openingPhotoIndex !== photoIdx ? 0.6 : 1,
+                        }}
                       >
-                        <span>Ver original</span>
+                        <span>{openingPhotoIndex === photoIdx ? 'Abriendo...' : 'Ver original'}</span>
                         <ExternalLink style={{ width: '12px', height: '12px' }} />
-                      </a>
+                      </button>
                     </div>
                   )}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -3380,19 +3439,25 @@ export default function ClienteDashboardTIB() {
               />
             </div>
 
+            {photoOpenError && (
+              <div style={{ marginTop: '12px', padding: '8px 12px', borderRadius: '6px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '12px', fontWeight: 600 }}>
+                {photoOpenError}
+              </div>
+            )}
+
             <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
               <span style={{ fontSize: '12px', color: '#6b7280' }}>
                 Presiona <kbd style={{ padding: '2px 6px', background: '#e2e8f0', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>ESC</kbd> o haz clic afuera para cerrar
               </span>
-              <a
-                href={parseTibImageUrls(selectedPhoto.url)[0] || selectedPhoto.url}
-                target="_blank"
-                rel="noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '6px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer', boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}
+              <button
+                type="button"
+                onClick={() => handleOpenOriginalPhoto(selectedPhoto.wr, 0)}
+                disabled={openingPhotoIndex !== null}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '6px', border: 'none', fontSize: '12px', cursor: openingPhotoIndex !== null ? 'wait' : 'pointer', opacity: openingPhotoIndex !== null ? 0.8 : 1, boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}
               >
-                <span>Ver tamaño original</span>
+                <span>{openingPhotoIndex === 0 ? 'Abriendo...' : 'Ver tamaño original'}</span>
                 <ExternalLink style={{ width: '14px', height: '14px' }} />
-              </a>
+              </button>
             </div>
           </div>
         </div>

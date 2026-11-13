@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { verifyPhotoToken } from '@/lib/portal/photo-link';
+import {
+  isAuthorizedTibPhotoUrl,
+  isValidPhotoTarget,
+  parseTibImageUrls,
+} from '@/lib/portal/photo-urls';
 
 export const dynamic = 'force-dynamic';
-
-const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
 
 /**
  * Proxy de fotos de almacén: oculta el dominio de TIB al cliente.
@@ -17,7 +20,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ wr: string;
   const token = req.nextUrl.searchParams.get('t') || '';
   const secret = process.env.PHOTO_LINK_SECRET || '';
 
-  if (!/^[A-Z0-9-]{3,30}$/.test(wr) || !Number.isInteger(index) || index < 0 || index > 20) {
+  if (!isValidPhotoTarget(wr, index)) {
     return new NextResponse('Not found', { status: 404 });
   }
   if (!verifyPhotoToken(wr, index, token, secret)) {
@@ -31,15 +34,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ wr: string;
     .limit(1)
     .maybeSingle();
 
-  const urls = String(data?.tib_imagen_url || '')
-    .split(',')
-    .map((u) => u.trim())
-    .filter(Boolean)
-    .map((u) => (u.startsWith('http') ? u : TIB_MEDIA_BASE_URL + u.replace(/^\/+/, '')));
+  const urls = parseTibImageUrls(data?.tib_imagen_url);
   const target = urls[index];
 
   // Solo se descarga desde el host de TIB (evita SSRF).
-  if (!target || new URL(target).hostname !== 'www.tibcourier.com') {
+  if (!isAuthorizedTibPhotoUrl(target)) {
     return new NextResponse('Not found', { status: 404 });
   }
 
