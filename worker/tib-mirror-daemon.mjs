@@ -156,6 +156,42 @@ function cleanExactString(str) {
     .replace(/\s+/g, ' ');
 }
 
+function escapeHtml(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatShortDate(fecStr) {
+  const s = String(fecStr || '').trim();
+  if (!s) return '—';
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!m) return s;
+  return `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableTibError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return (
+    err?.name === 'TimeoutError' ||
+    err?.name === 'AbortError' ||
+    msg.includes('http 5') ||
+    msg.includes('http 429') ||
+    msg.includes('terminated') ||
+    msg.includes('fetch failed') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('aborted')
+  );
+}
+
 function normalizeTibWr(rawWr, seqwr) {
   const base = String(rawWr || seqwr || '').trim();
   if (!base) return '';
@@ -307,19 +343,22 @@ async function notifyAdminNewPackage({ wr, tracking, consignatario, pesoKg, tipo
 /**
  * Registra en tiempo real cada correo despachado en portal_eventos_uso para telemetría y analíticas
  */
-async function logEmailSentToTelemetry(toEmail, subject, wr = null) {
+async function logEmailSentToTelemetry(toEmail, subject, meta = {}) {
   try {
-    const SUPERADMIN_EMAILS = ['sistemaamexcourier@gmail.com', 'gerencia@amexcourierperu.com'];
-    if (SUPERADMIN_EMAILS.includes(String(toEmail).trim().toLowerCase())) {
+    const cleanTo = String(toEmail).trim().toLowerCase();
+    if (SUPERADMIN_EMAILS.has(cleanTo)) {
       return;
     }
     await sb.from('portal_eventos_uso').insert({
-      usuario_email: String(toEmail).trim().toLowerCase(),
+      usuario_email: cleanTo,
       tipo_evento: 'EMAIL_ENVIADO',
       detalles: {
         asunto: subject,
-        wr: wr || undefined,
-        origen: 'TIB Mirror Daemon VPS',
+        wr: meta.wr || undefined,
+        wrs: Array.isArray(meta.wrs) && meta.wrs.length > 0 ? meta.wrs : undefined,
+        cantidad_paquetes: meta.wrs ? meta.wrs.length : undefined,
+        resend_id: meta.resendId || undefined,
+        origen: meta.origen || 'TIB Mirror Daemon VPS',
       },
       dispositivo: 'Servidor VPS',
       navegador: 'TIB Daemon',
@@ -327,6 +366,36 @@ async function logEmailSentToTelemetry(toEmail, subject, wr = null) {
     });
   } catch (e) {
     console.error(`[TELEMETRÍA ❌] Error registrando email para ${toEmail}:`, e.message);
+  }
+}
+
+/**
+ * Envía un correo mediante Resend verificando la respuesta ({ data, error }) antes de registrar telemetría.
+ */
+async function sendResendAndTrack({ to, subject, html, wr = null, wrs = null, origen = 'TIB Mirror Daemon VPS', tag = 'EMAIL' }) {
+  if (!resend) {
+    console.warn(`[NOTIFICACIÓN] Resend no configurado. Omitiendo email a ${to}`);
+    return false;
+  }
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: RESEND_FROM,
+      to: [to],
+      subject,
+      html,
+    });
+
+    if (error || !data?.id) {
+      console.error(`[NOTIFICACIÓN ❌] Error Resend '${tag}' a ${to}:`, error?.message || 'Sin ID de confirmación');
+      return false;
+    }
+
+    await logEmailSentToTelemetry(to, subject, { wr, wrs, resendId: data.id, origen });
+    return true;
+  } catch (err) {
+    console.error(`[NOTIFICACIÓN ❌] Excepción al enviar '${tag}' a ${to}:`, err.message);
+    return false;
   }
 }
 
@@ -455,18 +524,101 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
 </html>`;
 
     const emailSubject1 = `📦 ¡Tu paquete ya está en Miami! [${wr}]${cleanConsignee ? ' - ' + cleanConsignee : ''}`;
-    await resend.emails.send({
-      from: RESEND_FROM,
-      to: [email],
+    const sent = await sendResendAndTrack({
+      to: email,
       subject: emailSubject1,
       html: htmlContent,
+      wr,
+      wrs: [wr],
+      tag: 'RECIBIDO',
     });
-    await logEmailSentToTelemetry(email, emailSubject1, wr);
 
-    console.log(`[NOTIFICACIÓN ✅] Email 'RECIBIDO' enviado a ${email} para el paquete ${wr} (${cleanConsignee})`);
+    if (sent) {
+      console.log(`[NOTIFICACIÓN ✅] Email 'RECIBIDO' enviado a ${email} para el paquete ${wr} (${cleanConsignee})`);
+    }
+    return sent;
   } catch (err) {
     console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'RECIBIDO' a ${email}:`, err.message);
+    return false;
   }
+}
+
+/**
+ * Envía un correo resumen consolidado cuando tras una caída/reinicio se acumularon múltiples paquetes
+ * sin notificación para un mismo cliente (evita ráfagas anti-spam y límite de tamaño Gmail).
+ */
+async function notifyClientConsolidatedPackages(email, nombreCompleto, items, origen = 'TIB Mirror Daemon VPS (Recuperación)') {
+  if (!Array.isArray(items) || items.length === 0) return false;
+
+  const recCount = items.filter((p) => p.statusTib === 'RECIBIDO').length;
+  const envCount = items.filter((p) => p.statusTib === 'ENVIADO').length;
+
+  let breakdownText = `${items.length} paquete${items.length === 1 ? '' : 's'} registrado${items.length === 1 ? '' : 's'}`;
+  if (recCount > 0 && envCount > 0) {
+    breakdownText = `${recCount} en bodega Miami y ${envCount} ya en vuelo a Perú`;
+  } else if (envCount > 0) {
+    breakdownText = `${envCount} paquete${envCount === 1 ? '' : 's'} en vuelo a Perú`;
+  } else {
+    breakdownText = `${recCount} paquete${recCount === 1 ? '' : 's'} recibido${recCount === 1 ? '' : 's'} en bodega Miami`;
+  }
+
+  const headingText =
+    items.length === 1
+      ? 'Actualización de tu paquete'
+      : `Actualización de tus ${items.length} paquetes`;
+
+  const rowsHtml = items
+    .map((p, idx) => {
+      const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const trackText = p.tracking && p.tracking !== '—' ? escapeHtml(p.tracking) : 'Sin tracking';
+      const weightText = p.pesoKg > 0 ? `${Number(p.pesoKg).toFixed(2)} kg` : 'Por reg.';
+      const dateText = escapeHtml(formatShortDate(p.fecRegister));
+      const statusBadge =
+        p.statusTib === 'ENVIADO'
+          ? '<span style="display:inline-block;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;white-space:nowrap;">EN VUELO</span>'
+          : '<span style="display:inline-block;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800;white-space:nowrap;">RECIBIDO MIAMI</span>';
+
+      const imgs = String(p.tibImagenUrl || '')
+        .split(',')
+        .map((u) => u.trim())
+        .filter(Boolean);
+      const photoLinks =
+        imgs.length > 0
+          ? imgs
+              .map((u, i) => {
+                const href = escapeHtml(clientPhotoUrl(p.wr, i, u));
+                const label = imgs.length > 1 ? `Foto ${i + 1}` : 'Ver foto';
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;color:#ea580c;font-weight:700;font-size:11px;text-decoration:none;white-space:nowrap;margin-right:4px;">${label}</a>`;
+              })
+              .join('')
+          : '<span style="color:#94a3b8;font-size:11px;">—</span>';
+
+      return `<tr style="background:${bg};border-bottom:1px solid #e2e8f0;"><td style="padding:8px;font-family:monospace;font-size:11.5px;font-weight:800;color:#ff5722;white-space:nowrap;">${escapeHtml(p.wr)}</td><td style="padding:8px;font-size:11.5px;font-weight:700;color:#0f172a;">${escapeHtml(p.consignatario)}</td><td style="padding:8px;font-family:monospace;font-size:11px;color:#334155;word-break:break-all;">${trackText}</td><td style="padding:8px;font-size:11.5px;font-weight:700;color:#1e293b;white-space:nowrap;">${weightText}</td><td style="padding:8px;font-size:11px;color:#475569;white-space:nowrap;">${dateText}</td><td style="padding:8px;">${statusBadge}</td><td style="padding:8px;">${photoLinks}</td></tr>`;
+    })
+    .join('');
+
+  const htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Resumen de Paquetes - AMEX Courier</title></head><body style="margin:0;padding:0;background-color:#0b1329;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#0b1329;padding:28px 12px;"><tr><td align="center"><table role="presentation" width="680" cellspacing="0" cellpadding="0" style="background-color:#ffffff;border-radius:14px;overflow:hidden;max-width:680px;width:100%;"><tr><td style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#ff5722 100%);padding:30px 24px;text-align:center;border-bottom:3px solid #ff5722;"><img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="150" style="display:block;margin:0 auto 12px auto;" /><span style="display:inline-block;background:rgba(255,87,34,0.2);border:1px solid rgba(255,87,34,0.4);color:#ffccbc;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:10px;">Resumen de Casillero • Avisos Pendientes</span><h1 style="color:#ffffff;margin:0;font-size:21px;font-weight:900;">${headingText}</h1><p style="color:#cbd5e1;margin:6px 0 0 0;font-size:13px;">${escapeHtml(breakdownText)}</p></td></tr><tr><td style="padding:24px 20px;"><p style="margin:0 0 12px 0;font-size:14.5px;color:#334155;">Hola <strong>${escapeHtml(nombreCompleto)}</strong>,</p><p style="margin:0 0 16px 0;font-size:13.5px;color:#475569;line-height:1.55;">Aquí tienes el resumen actualizado de los paquetes registrados recientemente en tu casillero:</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:8px;border-collapse:collapse;overflow:hidden;margin-bottom:20px;"><thead><tr style="background:#f1f5f9;border-bottom:2px solid #cbd5e1;text-align:left;"><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">WR</th><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">Consignatario</th><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">Tracking</th><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">Peso</th><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">Ingreso</th><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">Estado</th><th style="padding:8px;font-size:10.5px;color:#475569;text-transform:uppercase;">Evidencia</th></tr></thead><tbody>${rowsHtml}</tbody></table><div style="text-align:center;margin:22px 0 8px 0;"><a href="${escapeHtml(PHOTO_PORTAL_BASE_URL)}/clientes" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:13px 30px;font-size:14px;font-weight:800;color:#ffffff;background:linear-gradient(135deg,#ff5722 0%,#e64a19 100%);text-decoration:none;border-radius:8px;">Ver todo en mi Portal de Clientes →</a></div></td></tr><tr><td style="background-color:#f8fafc;padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0;"><p style="margin:0;font-size:12px;font-weight:700;color:#475569;">AMEX Courier S.A.C. • Tu conexión directa Miami - Lima</p></td></tr></table></td></tr></table></body></html>`;
+
+  const wrs = items.map((i) => i.wr);
+  const subject =
+    items.length === 1
+      ? `📦 Tu paquete [${wrs[0]}] fue registrado en Miami - AMEX Courier`
+      : `📦 Resumen de tus ${items.length} paquetes registrados en Miami - AMEX Courier`;
+
+  const sent = await sendResendAndTrack({
+    to: email,
+    subject,
+    html: htmlContent,
+    wr: wrs.length === 1 ? wrs[0] : null,
+    wrs,
+    origen,
+    tag: 'RESUMEN',
+  });
+
+  if (sent) {
+    console.log(`[NOTIFICACIÓN ✅] Resumen consolidado (${wrs.length} WRs) enviado a ${email}`);
+  }
+  return sent;
 }
 
 async function notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg) {
@@ -554,17 +706,22 @@ async function notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pe
 </html>`;
 
     const emailSubject2 = `✈️ ¡Tu paquete va en camino a Lima! [${wr}]`;
-    await resend.emails.send({
-      from: RESEND_FROM,
-      to: [email],
+    const sent = await sendResendAndTrack({
+      to: email,
       subject: emailSubject2,
       html: htmlContent,
+      wr,
+      wrs: [wr],
+      tag: 'EN VUELO',
     });
-    await logEmailSentToTelemetry(email, emailSubject2, wr);
 
-    console.log(`[NOTIFICACIÓN ✅] Email 'EN VUELO' enviado a ${email} para el paquete ${wr}`);
+    if (sent) {
+      console.log(`[NOTIFICACIÓN ✅] Email 'EN VUELO' enviado a ${email} para el paquete ${wr}`);
+    }
+    return sent;
   } catch (err) {
     console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'EN VUELO' a ${email}:`, err.message);
+    return false;
   }
 }
 
@@ -648,18 +805,234 @@ async function notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking)
 </html>`;
 
     const emailSubject3 = `✅ ¡Tu paquete ha sido entregado! [${wr}]`;
-    await resend.emails.send({
-      from: RESEND_FROM,
-      to: [email],
+    const sent = await sendResendAndTrack({
+      to: email,
       subject: emailSubject3,
       html: htmlContent,
+      wr,
+      wrs: [wr],
+      tag: 'ENTREGADO',
     });
-    await logEmailSentToTelemetry(email, emailSubject3, wr);
 
-    console.log(`[NOTIFICACIÓN ✅] Email 'ENTREGADO' enviado a ${email} para el paquete ${wr}`);
+    if (sent) {
+      console.log(`[NOTIFICACIÓN ✅] Email 'ENTREGADO' enviado a ${email} para el paquete ${wr}`);
+    }
+    return sent;
   } catch (err) {
     console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'ENTREGADO' a ${email}:`, err.message);
+    return false;
   }
+}
+
+/**
+ * Obtiene el conjunto de pares "email|WR" ya notificados en portal_eventos_uso durante los últimos días.
+ */
+async function fetchNotifiedWrEmailSet(lookbackDays = 7) {
+  const cutoffIso = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
+  const notifiedSet = new Set();
+  let offset = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await sb
+      .from('portal_eventos_uso')
+      .select('id, usuario_email, detalles')
+      .eq('tipo_evento', 'EMAIL_ENVIADO')
+      .gte('creado_en', cutoffIso)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      throw new Error(`No se pudo consultar portal_eventos_uso: ${error.message}`);
+    }
+    if (!data || data.length === 0) break;
+
+    for (const ev of data) {
+      const em = String(ev.usuario_email || '').trim().toLowerCase();
+      if (!em) continue;
+      if (ev.detalles?.wr) {
+        notifiedSet.add(`${em}|${String(ev.detalles.wr).trim().toUpperCase()}`);
+      }
+      if (Array.isArray(ev.detalles?.wrs)) {
+        for (const w of ev.detalles.wrs) {
+          const cleanWr = String(w || '').trim().toUpperCase();
+          if (cleanWr) notifiedSet.add(`${em}|${cleanWr}`);
+        }
+      }
+    }
+
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return notifiedSet;
+}
+
+/**
+ * En el ciclo inicial tras reiniciar el contenedor/VPS, detecta paquetes ingresados en los últimos 5 días
+ * que aún no tengan registro EMAIL_ENVIADO para ese cliente y despacha los avisos (consolidando si >= 2).
+ */
+async function recoverMissedNotificationsOnStartup(processedWrsMap, clientDetailsMap) {
+  let notifiedSet;
+  try {
+    notifiedSet = await fetchNotifiedWrEmailSet(7);
+  } catch (err) {
+    console.warn(`[TIB-MIRROR ⚠️ Recuperación] Se omite recuperación automática por fallo de telemetría: ${err.message}`);
+    return 0;
+  }
+
+  const windowCutoffMs = Date.now() - 5 * 24 * 60 * 60 * 1000;
+  const byClient = new Map();
+
+  for (const [canonicalWr, entry] of processedWrsMap.entries()) {
+    if (entry.statusTib !== 'RECIBIDO' && entry.statusTib !== 'ENVIADO') continue;
+
+    const pkgTimeMs = new Date(entry.record.creado_en).getTime();
+    if (isNaN(pkgTimeMs) || pkgTimeMs < windowCutoffMs) continue;
+
+    const emails =
+      entry.matchedEmails && entry.matchedEmails.size > 0
+        ? Array.from(entry.matchedEmails)
+        : [entry.matchedEmail];
+
+    for (const rawEmail of emails) {
+      const email = String(rawEmail || '').trim().toLowerCase();
+      if (!email || SUPERADMIN_EMAILS.has(email)) continue;
+      if (notifiedSet.has(`${email}|${canonicalWr}`)) continue;
+
+      if (!byClient.has(email)) byClient.set(email, []);
+      byClient.get(email).push({
+        wr: canonicalWr,
+        statusTib: entry.statusTib,
+        consignatario: entry.record.nombre_consignatario,
+        tracking: entry.record.tracking,
+        pesoKg: entry.record.peso_kg,
+        tipoEmpaque: entry.record.tipo_empaque,
+        fecRegister: String(entry.rawItem?.fecRegister || entry.record.creado_en || ''),
+        tibImagenUrl: entry.record.tib_imagen_url,
+      });
+    }
+  }
+
+  if (byClient.size === 0) {
+    console.log(`[TIB-MIRROR 🛡️ Recuperación] Sin notificaciones recientes pendientes al arrancar.`);
+    return 0;
+  }
+
+  console.log(`[TIB-MIRROR 🚨 Recuperación] Detectados ${byClient.size} cliente(s) con alertas recientes sin enviar; despachando...`);
+  let sentEmailsCount = 0;
+  const entries = Array.from(byClient.entries());
+
+  for (let i = 0; i < entries.length; i++) {
+    const [email, items] = entries[i];
+    items.sort((a, b) => (a.fecRegister < b.fecRegister ? -1 : 1));
+    const nombreCompleto = clientDetailsMap.get(email) || 'Cliente AMEX';
+
+    let ok = false;
+    if (items.length === 1 && items[0].statusTib === 'RECIBIDO') {
+      const single = items[0];
+      ok = await notifyClientNewPackage(
+        email,
+        nombreCompleto,
+        single.wr,
+        single.tracking,
+        single.pesoKg,
+        single.tipoEmpaque,
+        single.tibImagenUrl,
+        single.consignatario
+      );
+    } else {
+      ok = await notifyClientConsolidatedPackages(
+        email,
+        nombreCompleto,
+        items,
+        'TIB Mirror Daemon VPS (Auto-Recuperación)'
+      );
+    }
+
+    if (ok) sentEmailsCount++;
+    if (i < entries.length - 1) {
+      await sleep(1500);
+    }
+  }
+
+  return sentEmailsCount;
+}
+
+/**
+ * En sincronización completa, elimina de paquetes_portal únicamente WRs anulados/eliminados de TIB
+ * (solo si el snapshot completo supera el umbral sano y dentro del límite de circuito de seguridad).
+ */
+async function pruneOrphanPackagesSafely(processedWrsMap) {
+  if (processedWrsMap.size < 50000) {
+    console.warn(`[TIB-MIRROR ⚠️ GUARD] Tamaño completo de TIB (${processedWrsMap.size}) por debajo de 50,000; se omite depuración de bajas.`);
+    return 0;
+  }
+
+  const MAX_AUTO_PRUNE_PER_CYCLE = 500;
+  const orphans = [];
+  let offset = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await sb
+      .from('paquetes_portal')
+      .select('id, numero_recibo_bodega, nombre_consignatario, erp_paquete_id')
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      console.warn(`[TIB-MIRROR ⚠️ Prune] Error consultando Supabase:`, error.message);
+      return 0;
+    }
+    if (!data || data.length === 0) break;
+
+    for (const row of data) {
+      if (!processedWrsMap.has(row.numero_recibo_bodega) && row.erp_paquete_id == null) {
+        orphans.push(row);
+      }
+    }
+
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  if (orphans.length === 0) return 0;
+
+  if (orphans.length > MAX_AUTO_PRUNE_PER_CYCLE) {
+    console.warn(`[TIB-MIRROR ⚠️ GUARD] Detectadas ${orphans.length} posibles bajas (> ${MAX_AUTO_PRUNE_PER_CYCLE}); se aborta eliminación automática por seguridad.`);
+    return 0;
+  }
+
+  let deletedCount = 0;
+  const CHUNK_SIZE = 200;
+  for (let i = 0; i < orphans.length; i += CHUNK_SIZE) {
+    const chunk = orphans.slice(i, i + CHUNK_SIZE);
+    const ids = chunk.map((r) => r.id);
+    const { error: delErr } = await sb.from('paquetes_portal').delete().in('id', ids);
+    if (delErr) {
+      console.error(`[TIB-MIRROR ❌ Prune] Error eliminando lote:`, delErr.message);
+    } else {
+      deletedCount += chunk.length;
+      for (const r of chunk) {
+        daemonWrStatusCache.delete(r.numero_recibo_bodega);
+      }
+    }
+  }
+
+  const affectedConsignees = new Set(
+    orphans.map((r) => cleanExactString(r.nombre_consignatario)).filter(Boolean)
+  );
+  for (const cName of affectedConsignees) {
+    try {
+      await sb.rpc('recalcular_consignatario_catalogo', { target_nombre: cName });
+    } catch (rpcErr) {
+      console.warn(`[TIB-MIRROR ⚠️ Prune] Error recalculando catálogo para ${cName}:`, rpcErr.message);
+    }
+  }
+
+  console.log(`[TIB-MIRROR 🧹] Depurados ${deletedCount} WR(s) anulados en TIB y recalculados ${affectedConsignees.size} consignatario(s).`);
+  return deletedCount;
 }
 
 // -------------------------------------------------------------
@@ -732,16 +1105,34 @@ async function runMirrorSyncCycle() {
 
     console.log(`[TIB-MIRROR] Clientes activos monitoreados: ${clientDetailsMap.size}`);
 
-    // 2. Descargar en paralelo los 3 estados oficiales de la API de TIB
-    async function fetchTibStatus(status) {
-      const res = await fetch(TIB_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: TIB_EMAIL, password: TIB_PASSWORD, status }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} al consultar TIB ${status}`);
-      const json = await res.json();
-      return (json.data || []).map((item) => ({ ...item, _fetchedStatus: status }));
+    // 2. Descargar en paralelo los estados oficiales de la API de TIB (con timeout y reintento ante HTTP 504/red)
+    async function fetchTibStatus(status, maxRetries = 3) {
+      let lastErr = null;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(TIB_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: TIB_EMAIL, password: TIB_PASSWORD, status }),
+            signal: AbortSignal.timeout(45000),
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status} al consultar TIB ${status}`);
+          }
+          const json = await res.json();
+          return (json.data || []).map((item) => ({ ...item, _fetchedStatus: status }));
+        } catch (err) {
+          lastErr = err;
+          if (attempt < maxRetries && isRetryableTibError(err)) {
+            const backoffMs = 2000 * attempt;
+            console.warn(`[TIB-MIRROR ⚠️] Error temporal consultando TIB ${status} (intento ${attempt}/${maxRetries}): ${err.message}. Reintentando en ${backoffMs / 1000}s...`);
+            await sleep(backoffMs);
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw lastErr;
     }
 
     let orderedInput = [];
@@ -877,8 +1268,9 @@ async function runMirrorSyncCycle() {
             ? Array.from(entry.matchedEmails)
             : [entry.matchedEmail];
 
-          for (const email of emailsToNotify) {
-            if (email !== ADMIN_MASTER_EMAIL && entry.statusTib === 'RECIBIDO') {
+          for (const rawEmail of emailsToNotify) {
+            const email = String(rawEmail || '').trim().toLowerCase();
+            if (email && !SUPERADMIN_EMAILS.has(email) && entry.statusTib === 'RECIBIDO') {
               clientCandidatesToNotify.push({
                 type: 'RECIBIDO',
                 email,
@@ -943,8 +1335,17 @@ async function runMirrorSyncCycle() {
       }
     }
 
-    // 6. Si hay candidatos a notificar y no es el ciclo inicial, despachar correos a clientes
+    // 5.C. Depuración segura de WRs anulados/eliminados en TIB durante sincronización completa
+    if (isFullSweep) {
+      await pruneOrphanPackagesSafely(processedWrsMap);
+    }
+
+    // 6. Despachar correos pendientes de arranque (recuperación) o nuevos ingresos del ciclo
     let sentEmailsCount = 0;
+
+    if (isInitialRun) {
+      sentEmailsCount += await recoverMissedNotificationsOnStartup(processedWrsMap, clientDetailsMap);
+    }
 
     // Alertas exclusivamente para clientes regulares registrados (con dosificación anti-ráfaga de Gmail)
     if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
@@ -960,23 +1361,22 @@ async function runMirrorSyncCycle() {
         const tipoEmpaque = entry.record.tipo_empaque;
         const fotoUrl = entry.record.tib_imagen_url;
 
+        let ok = false;
         if (type === 'RECIBIDO') {
-          await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, entry.record.nombre_consignatario);
-          sentEmailsCount++;
+          ok = await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, entry.record.nombre_consignatario);
         } else if (type === 'ENVIADO') {
-          await notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg);
-          sentEmailsCount++;
+          ok = await notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg);
         } else if (type === 'ENTREGADO') {
-          await notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking);
-          sentEmailsCount++;
+          ok = await notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking);
         }
+        if (ok) sentEmailsCount++;
 
         // Alternativa A: Dosificación inteligente para evitar greylisting / pausas de recepción de Gmail
         if (i < clientCandidatesToNotify.length - 1) {
-          const nextEmail = clientCandidatesToNotify[i + 1]?.entry?.matchedEmail;
+          const nextEmail = clientCandidatesToNotify[i + 1]?.email || clientCandidatesToNotify[i + 1]?.entry?.matchedEmail;
           const isSameRecipient = nextEmail && nextEmail.toLowerCase() === (email || '').toLowerCase();
           const pauseMs = isSameRecipient ? 2000 : 1200;
-          await new Promise((resolve) => setTimeout(resolve, pauseMs));
+          await sleep(pauseMs);
         }
       }
     }
