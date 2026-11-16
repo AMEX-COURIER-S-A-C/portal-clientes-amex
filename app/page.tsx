@@ -85,10 +85,14 @@ export default function ClienteDashboardTIB() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: number; type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const hasInitialDataLoaded = React.useRef(false);
   const lastSearchedTextRef = React.useRef({ wr: '', tracking: '' });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
 
   // Navegación entre vistas principales para Superadmin
   const [activeTab, setActiveTab] = useState<'warehouse' | 'configuracion' | 'analiticas'>('warehouse');
@@ -149,8 +153,11 @@ export default function ClienteDashboardTIB() {
 
   // Estados para Activar / Desactivar cuenta de cliente y Modal de Confirmación
   const [clientToDeactivate, setClientToDeactivate] = useState<ClientePortalItem | null>(null);
+  const [clientToReset, setClientToReset] = useState<ClientePortalItem | null>(null);
   const [isTogglingActiveId, setIsTogglingActiveId] = useState<string | null>(null);
   const [openKeywordsClientId, setOpenKeywordsClientId] = useState<string | null>(null);
+  const [keywordsPopoverStyle, setKeywordsPopoverStyle] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
+  const keywordsPopoverRef = React.useRef<HTMLDivElement>(null);
 
   // Estados para el Buscador / Autocompletado de Consignatarios TIB (3,360)
   const [tibSearchResults, setTibSearchResults] = useState<any[]>([]);
@@ -165,6 +172,8 @@ export default function ClienteDashboardTIB() {
   const [tibCatalogTotal, setTibCatalogTotal] = useState(0);
   const [isLoadingTibCatalog, setIsLoadingTibCatalog] = useState(false);
   const [tibCatalogPage, setTibCatalogPage] = useState(1);
+  const tibCatalogAbortRef = React.useRef<AbortController | null>(null);
+  const tibCatalogLastSearchRef = React.useRef<string>('');
 
   // Sincronización masiva de inventario
   const [isSyncingAll, setIsSyncingAll] = useState(false);
@@ -172,6 +181,43 @@ export default function ClienteDashboardTIB() {
   // Paginación estilo TIB (50 filas por página)
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast({ id: Date.now(), type, message });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, 5500);
+  }, []);
+
+  const handleToggleKeywordsPopover = useCallback((clientId: string, anchorEl: HTMLElement) => {
+    if (openKeywordsClientId === clientId) {
+      setOpenKeywordsClientId(null);
+      setKeywordsPopoverStyle(null);
+      return;
+    }
+    const rect = anchorEl.getBoundingClientRect();
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const width = Math.min(380, Math.max(240, vw - 24));
+    const left = Math.min(Math.max(12, rect.left), vw - width - 12);
+    const spaceBelow = vh - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const openUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+    const availableSpace = openUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.max(110, Math.min(220, availableSpace - 68));
+
+    setKeywordsPopoverStyle({
+      top: openUp ? undefined : rect.bottom + 6,
+      bottom: openUp ? vh - rect.top + 6 : undefined,
+      left,
+      width,
+      maxHeight,
+    });
+    setOpenKeywordsClientId(clientId);
+  }, [openKeywordsClientId]);
 
   // 1. Garantizar scroll vertical libre y nativo en el navegador
   useEffect(() => {
@@ -187,10 +233,14 @@ export default function ClienteDashboardTIB() {
         setOpeningPhotoIndex(null);
         setPhotoOpenError(null);
         setUserMenuOpen(false);
+        setIsConsignatarioFilterOpen(false);
         setIsAddClientOpen(false);
         setIsClientsListOpen(false);
         setEditingClient(null);
+        setClientToDeactivate(null);
+        setClientToReset(null);
         setOpenKeywordsClientId(null);
+        setKeywordsPopoverStyle(null);
       }
     };
 
@@ -213,6 +263,9 @@ export default function ClienteDashboardTIB() {
       document.body.style.overflowY = '';
       document.body.style.height = '';
       window.removeEventListener('keydown', handleKeyDown);
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
     };
   }, []);
 
@@ -293,6 +346,7 @@ export default function ClienteDashboardTIB() {
 
     // 2. Si es la primera carga y no hay datos, mostrar loader principal.
     // Si ya hay paquetes en pantalla, activar isSearching (no desmonta la tabla)
+    setFetchError(null);
     if (!hasInitialDataLoaded.current) {
       setIsLoading(true);
     } else {
@@ -333,20 +387,8 @@ export default function ClienteDashboardTIB() {
             pesoMax: activePesoMax,
           },
         }),
-      }).catch((err) => {
-        if (err?.name === 'AbortError') return null;
-        console.warn('Network error or abort:', err);
-        return null;
       });
 
-      if (!res) {
-        if (abortControllerRef.current === controller) {
-          setIsLoading(false);
-          setIsSearching(false);
-          setIsRefreshing(false);
-        }
-        return;
-      }
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(json.error || 'Error al consultar paquetes');
@@ -354,6 +396,7 @@ export default function ClienteDashboardTIB() {
 
       const data = json.paquetes || [];
       setPaquetes(data);
+      setFetchError(null);
       hasInitialDataLoaded.current = true;
 
       const countNum = json.count ?? data.length;
@@ -379,6 +422,7 @@ export default function ClienteDashboardTIB() {
         return;
       }
       console.error('Error fetching paquetes cliente:', err?.message || err);
+      setFetchError(err?.message || 'No se pudieron cargar los paquetes. Verifica tu conexión e intenta nuevamente.');
     } finally {
       if (abortControllerRef.current === controller) {
         setIsLoading(false);
@@ -428,6 +472,40 @@ export default function ClienteDashboardTIB() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isConsignatarioFilterOpen]);
+
+  // Cerrar menú de usuario al hacer clic fuera
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userMenuOpen]);
+
+  // Cerrar popover de consignatarios si se hace scroll fuera de él o cambia el tamaño de pantalla
+  useEffect(() => {
+    if (!openKeywordsClientId) return;
+    const handleViewportScroll = (e: Event) => {
+      if (keywordsPopoverRef.current && e.target instanceof Node && keywordsPopoverRef.current.contains(e.target)) {
+        return;
+      }
+      setOpenKeywordsClientId(null);
+      setKeywordsPopoverStyle(null);
+    };
+    const handleResize = () => {
+      setOpenKeywordsClientId(null);
+      setKeywordsPopoverStyle(null);
+    };
+    window.addEventListener('scroll', handleViewportScroll, true);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('scroll', handleViewportScroll, true);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [openKeywordsClientId]);
 
   // Cargar lista de clientes registrados en el portal
   const fetchClientsList = useCallback(async () => {
@@ -669,10 +747,10 @@ export default function ClienteDashboardTIB() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al sincronizar');
       
-      alert(`Sincronización TIB completa: ${data.sincronizados} paquetes asignados a sus clientes con coincidencia exacta.`);
+      showToast('success', `Sincronización TIB completa: ${data.sincronizados} paquetes asignados a sus clientes con coincidencia exacta.`);
       fetchPaquetes(user.email);
     } catch (err: any) {
-      alert(`Error en sincronización: ${err.message}`);
+      showToast('error', `Error en sincronización: ${err.message}`);
     } finally {
       setIsSyncingAll(false);
     }
@@ -745,16 +823,22 @@ export default function ClienteDashboardTIB() {
       if (!res.ok) {
         throw new Error(data.error || 'Error al enviar enlace de restablecimiento');
       }
+      const msg = data.message || `Correo enviado exitosamente a ${clientEmail} con el enlace seguro para restablecer su contraseña.`;
       setResendNotice({
         type: 'success',
-        message: data.message || `Correo enviado exitosamente a ${clientEmail} con el enlace seguro para restablecer su contraseña.`,
+        message: msg,
       });
+      showToast('success', msg);
+      setClientToReset(null);
       setTimeout(() => setResendNotice(null), 6000);
     } catch (err: any) {
+      const msg = err.message || 'Error al enviar correo para restablecer contraseña';
       setResendNotice({
         type: 'error',
-        message: err.message || 'Error al enviar correo para restablecer contraseña',
+        message: msg,
       });
+      showToast('error', msg);
+      setClientToReset(null);
       setTimeout(() => setResendNotice(null), 6000);
     } finally {
       setResendingEmail(null);
@@ -931,43 +1015,71 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Cargar Catálogo TIB para la pestaña de Configuración
+  // Cargar Catálogo TIB para la pestaña de Configuración (con cancelación y sin duplicados)
   const fetchTibCatalog = useCallback(async (searchQuery = '', page = 1) => {
+    if (tibCatalogAbortRef.current) {
+      tibCatalogAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    tibCatalogAbortRef.current = controller;
+
     setIsLoadingTibCatalog(true);
     try {
       const limit = 15;
       const offset = (page - 1) * limit;
-      const res = await fetch(`/api/listado-amex?search=${encodeURIComponent(searchQuery.trim())}&limit=${limit}&offset=${offset}`);
+      const res = await fetch(
+        `/api/listado-amex?search=${encodeURIComponent(searchQuery.trim())}&limit=${limit}&offset=${offset}`,
+        { signal: controller.signal }
+      );
       const json = await res.json();
       if (res.ok) {
         setTibCatalogList(json.clientes || []);
         setTibCatalogTotal(json.total || 0);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.warn('Error al cargar catálogo TIB:', err);
     } finally {
-      setIsLoadingTibCatalog(false);
+      if (tibCatalogAbortRef.current === controller) {
+        setIsLoadingTibCatalog(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'configuracion' && isSuperadmin && configSubTab === 'tib') {
-      fetchTibCatalog(tibCatalogSearch, tibCatalogPage);
+    if (!(activeTab === 'configuracion' && isSuperadmin && configSubTab === 'tib')) {
+      return;
     }
+    const searchChanged = tibCatalogLastSearchRef.current !== tibCatalogSearch;
+    const delay = searchChanged ? 280 : 0;
+
+    const timer = setTimeout(() => {
+      tibCatalogLastSearchRef.current = tibCatalogSearch;
+      fetchTibCatalog(tibCatalogSearch, tibCatalogPage);
+    }, delay);
+
+    return () => clearTimeout(timer);
   }, [activeTab, isSuperadmin, configSubTab, tibCatalogSearch, tibCatalogPage, fetchTibCatalog]);
 
   // Paquetes paginados (ya provistos directamente por la consulta del servidor)
   const paginatedPaquetes = paquetes;
 
-  // Filtrado de clientes para el Panel de Configuración
+  // Filtrado de clientes para el Panel de Configuración (nombre, correo y consignatarios asignados)
   const filteredClientsList = useMemo(() => {
     if (!clientSearchQuery.trim()) return clientsList;
-    const q = clientSearchQuery.toLowerCase();
-    return clientsList.filter(c => 
+    const q = clientSearchQuery.toLowerCase().trim();
+    return clientsList.filter(c =>
       c.nombre_completo.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q)
+      c.email.toLowerCase().includes(q) ||
+      (Array.isArray(c.alias_palabras_clave) &&
+        c.alias_palabras_clave.some(k => k.toLowerCase().includes(q)))
     );
   }, [clientsList, clientSearchQuery]);
+
+  const activeKeywordsClient = useMemo(
+    () => (openKeywordsClientId ? clientsList.find(c => c.id === openKeywordsClientId) || null : null),
+    [openKeywordsClientId, clientsList]
+  );
 
   // Helper para formatear Date a input type="date" YYYY-MM-DD
   const formatDateForInput = (d: Date) => {
@@ -1217,10 +1329,10 @@ export default function ClienteDashboardTIB() {
           </div>
 
           {/* Usuario / Dropdown a la derecha */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div ref={userMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '5px 12px', borderRadius: '6px', maxWidth: 'none' }}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '5px 12px', borderRadius: '6px', maxWidth: 'min(260px, 52vw)' }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'USUARIO'}
@@ -1229,7 +1341,7 @@ export default function ClienteDashboardTIB() {
             </button>
 
             {userMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, marginTop: '6px', minWidth: '250px', width: 'max-content', maxWidth: '320px', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
+              <div style={{ position: 'absolute', right: 0, marginTop: '6px', minWidth: '250px', width: 'max-content', maxWidth: 'calc(100vw - 24px)', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
                 <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
                   <div>{user?.email}</div>
@@ -1509,7 +1621,8 @@ export default function ClienteDashboardTIB() {
                         top: '46px',
                         left: 0,
                         right: 0,
-                        minWidth: '310px',
+                        minWidth: 'min(310px, calc(100vw - 32px))',
+                        maxWidth: 'calc(100vw - 32px)',
                         backgroundColor: '#ffffff',
                         borderRadius: '10px',
                         border: '1px solid #cbd5e1',
@@ -1571,7 +1684,7 @@ export default function ClienteDashboardTIB() {
                           />
                           <input
                             type="text"
-                            autoFocus
+                            autoFocus={typeof window !== 'undefined' && window.innerWidth >= 768}
                             value={consignatarioSearchTerm}
                             onChange={(e) => setConsignatarioSearchTerm(e.target.value)}
                             placeholder="Filtrar nombre en esta lista..."
@@ -1862,6 +1975,7 @@ export default function ClienteDashboardTIB() {
                     }}
                     totalFilteredCount={totalFilteredCount}
                     totalSystemCount={totalSystemCount}
+                    onErrorToast={(msg) => showToast('error', msg)}
                   />
                 </div>
 
@@ -2184,48 +2298,142 @@ export default function ClienteDashboardTIB() {
                   {filterWr.trim() && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       WR: {filterWr}
-                      <X onClick={() => { setFilterWr(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setFilterWr(''); setCurrentPage(1); }}
+                        aria-label="Quitar filtro WR"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                   {filterTracking.trim() && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       Tracking: {filterTracking}
-                      <X onClick={() => { setFilterTracking(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setFilterTracking(''); setCurrentPage(1); }}
+                        aria-label="Quitar filtro Tracking"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                   {filterConsignatario.trim() && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       Cliente: {filterConsignatario}
-                      <X onClick={() => { setFilterConsignatario(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setFilterConsignatario(''); setCurrentPage(1); }}
+                        aria-label="Quitar filtro Cliente"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                   {filterTipo.trim() && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       Tipo: {filterTipo}
-                      <X onClick={() => { setFilterTipo(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setFilterTipo(''); setCurrentPage(1); }}
+                        aria-label="Quitar filtro Tipo"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                   {filterEstado.trim() && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       Estado: {filterEstado}
-                      <X onClick={() => { setFilterEstado(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setFilterEstado(''); setCurrentPage(1); }}
+                        aria-label="Quitar filtro Estado"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                   {(filterFechaDesde.trim() || filterFechaHasta.trim()) && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       📅 {filterFechaTipo === 'actualizado_en' ? 'Modificado' : 'Registro'}: {filterFechaDesde || 'Inicio'} al {filterFechaHasta || 'Hoy'}
-                      <X onClick={() => { applyDatePreset('all'); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { applyDatePreset('all'); setCurrentPage(1); }}
+                        aria-label="Quitar filtro Fecha"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                   {(filterPesoMin.trim() || filterPesoMax.trim()) && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '4px', padding: '2px 8px', fontSize: '11.5px', fontWeight: 600 }}>
                       ⚖ Peso: {filterPesoMin ? `${filterPesoMin}kg` : '0'} a {filterPesoMax ? `${filterPesoMax}kg` : '∞'}
-                      <X onClick={() => { setFilterPesoMin(''); setFilterPesoMax(''); setCurrentPage(1); }} style={{ width: '12px', height: '12px', cursor: 'pointer' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setFilterPesoMin(''); setFilterPesoMax(''); setCurrentPage(1); }}
+                        aria-label="Quitar filtro Peso"
+                        style={{ background: 'none', border: 'none', padding: '1px', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                      </button>
                     </span>
                   )}
                 </div>
               )}
             </div>
+
+            {fetchError && (
+              <div
+                role="alert"
+                style={{
+                  marginBottom: '12px',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#991b1b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                  fontSize: '13px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <AlertCircle style={{ width: '16px', height: '16px', color: '#dc2626', flexShrink: 0 }} aria-hidden="true" />
+                  <span style={{ fontWeight: 600 }}>{fetchError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fetchPaquetes(user?.email, currentPage)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #fca5a5',
+                    backgroundColor: '#ffffff',
+                    color: '#b91c1c',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <RefreshCw style={{ width: '13px', height: '13px' }} aria-hidden="true" />
+                  <span>Reintentar</span>
+                </button>
+              </div>
+            )}
 
             {/* 4. Tabla Principal Estilo TIB (Visualización en Tabla con Scroll Horizontal Táctil en Móvil) */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
@@ -2536,7 +2744,7 @@ export default function ClienteDashboardTIB() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => { setActiveTab('warehouse'); if (typeof window !== 'undefined') window.history.replaceState(null, '', '/?tab=warehouse'); }}
@@ -2678,14 +2886,14 @@ export default function ClienteDashboardTIB() {
                       boxShadow: '0 2px 4px rgba(255,87,34,0.25)',
                     }}
                   >
-                    <UserPlus style={{ width: '15px', height: '15px' }} />
-                    <span>+ Agregar Cliente</span>
+                    <UserPlus style={{ width: '15px', height: '15px' }} aria-hidden="true" />
+                    <span>Agregar Cliente</span>
                   </button>
                 </div>
               </div>
 
               {/* Sub-pestañas: Usuarios Creados vs Catálogo TIB */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #e5e7eb', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid #e5e7eb', paddingBottom: '12px', marginBottom: '16px' }}>
                 <button
                   type="button"
                   onClick={() => setConfigSubTab('usuarios')}
@@ -2710,12 +2918,7 @@ export default function ClienteDashboardTIB() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setConfigSubTab('tib');
-                    if (tibCatalogList.length === 0) {
-                      fetchTibCatalog(tibCatalogSearch, 1);
-                    }
-                  }}
+                  onClick={() => setConfigSubTab('tib')}
                   style={{
                     padding: '8px 16px',
                     borderRadius: '6px',
@@ -2783,23 +2986,46 @@ export default function ClienteDashboardTIB() {
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
-                      <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                      <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} aria-hidden="true" />
                       <input
                         type="text"
                         value={clientSearchQuery}
                         onChange={(e) => setClientSearchQuery(e.target.value)}
-                        placeholder="Buscar cliente por nombre o correo..."
+                        placeholder="Buscar cliente, correo o consignatario..."
                         style={{
                           width: '100%',
                           height: '38px',
                           paddingLeft: '32px',
-                          paddingRight: '10px',
+                          paddingRight: clientSearchQuery ? '32px' : '10px',
                           borderRadius: '6px',
                           border: '1px solid #d1d5db',
                           fontSize: '12.5px',
                           outline: 'none',
                         }}
                       />
+                      {clientSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setClientSearchQuery('')}
+                          aria-label="Limpiar búsqueda de clientes"
+                          style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            padding: '2px',
+                            color: '#9ca3af',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <X style={{ width: '14px', height: '14px' }} aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -2859,8 +3085,9 @@ export default function ClienteDashboardTIB() {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setOpenKeywordsClientId(openKeywordsClientId === c.id ? null : c.id);
+                                        handleToggleKeywordsPopover(c.id, e.currentTarget);
                                       }}
+                                      aria-expanded={openKeywordsClientId === c.id}
                                       style={{
                                         display: 'inline-flex',
                                         alignItems: 'center',
@@ -2901,71 +3128,6 @@ export default function ClienteDashboardTIB() {
                                         }}
                                       />
                                     </button>
-
-                                    {openKeywordsClientId === c.id && (
-                                      <>
-                                        <div
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setOpenKeywordsClientId(null);
-                                          }}
-                                          style={{ position: 'fixed', inset: 0, zIndex: 60 }}
-                                        />
-                                        <div
-                                          onClick={(e) => e.stopPropagation()}
-                                          style={{
-                                            position: 'absolute',
-                                            top: 'calc(100% + 6px)',
-                                            left: 0,
-                                            minWidth: '280px',
-                                            maxWidth: '380px',
-                                            backgroundColor: '#ffffff',
-                                            borderRadius: '8px',
-                                            border: '1px solid #e5e7eb',
-                                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-                                            padding: '12px',
-                                            zIndex: 70,
-                                          }}
-                                        >
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid #f3f4f6' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                              <Tag style={{ width: '13px', height: '13px', color: '#ff5722' }} />
-                                              <span style={{ fontSize: '12px', fontWeight: 700, color: '#111827' }}>
-                                                Consignatarios vinculados ({c.alias_palabras_clave.length})
-                                              </span>
-                                            </div>
-                                            <button
-                                              type="button"
-                                              onClick={() => setOpenKeywordsClientId(null)}
-                                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#9ca3af', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
-                                            >
-                                              <X style={{ width: '14px', height: '14px' }} />
-                                            </button>
-                                          </div>
-
-                                          <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '5px', paddingRight: '2px' }}>
-                                            {c.alias_palabras_clave.map((k, ki) => (
-                                              <span
-                                                key={ki}
-                                                style={{
-                                                  backgroundColor: '#f8fafc',
-                                                  color: '#1e293b',
-                                                  border: '1px solid #e2e8f0',
-                                                  padding: '3px 8px',
-                                                  borderRadius: '4px',
-                                                  fontSize: '11px',
-                                                  fontWeight: 600,
-                                                  lineHeight: 1.3,
-                                                  wordBreak: 'break-word',
-                                                }}
-                                              >
-                                                {k}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      </>
-                                    )}
                                   </div>
                                 ) : (
                                   <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '11.5px' }}>
@@ -2998,7 +3160,7 @@ export default function ClienteDashboardTIB() {
                                   {/* Botón 1: Restablecer Contraseña */}
                                   <button
                                     type="button"
-                                    onClick={() => handleResetPassword(c.email)}
+                                    onClick={() => setClientToReset(c)}
                                     disabled={resendingEmail === c.email}
                                     title={`Enviar correo automático a ${c.email} para restablecer o recuperar su contraseña`}
                                     style={{
@@ -3171,7 +3333,6 @@ export default function ClienteDashboardTIB() {
                         onChange={(e) => {
                           setTibCatalogSearch(e.target.value);
                           setTibCatalogPage(1);
-                          fetchTibCatalog(e.target.value, 1);
                         }}
                         placeholder="Buscar en los 3,360 consignatarios TIB..."
                         style={{
@@ -3271,8 +3432,8 @@ export default function ClienteDashboardTIB() {
                                     boxShadow: '0 1px 3px rgba(255,87,34,0.2)'
                                   }}
                                 >
-                                  <UserPlus style={{ width: '12px', height: '12px' }} />
-                                  <span>+ Asignar Portal</span>
+                                  <UserPlus style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                                  <span>Asignar Portal</span>
                                 </button>
                               </td>
                             </tr>
@@ -3284,7 +3445,7 @@ export default function ClienteDashboardTIB() {
 
                   {/* Paginación Catálogo TIB */}
                   {tibCatalogTotal > 15 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', fontSize: '12px', color: '#6b7280' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginTop: '12px', fontSize: '12px', color: '#6b7280' }}>
                       <span>
                         Página <strong>{tibCatalogPage}</strong> de <strong>{Math.ceil(tibCatalogTotal / 15)}</strong> ({tibCatalogTotal} clientes)
                       </span>
@@ -3295,7 +3456,6 @@ export default function ClienteDashboardTIB() {
                           onClick={() => {
                             const newP = Math.max(1, tibCatalogPage - 1);
                             setTibCatalogPage(newP);
-                            fetchTibCatalog(tibCatalogSearch, newP);
                           }}
                           style={{
                             padding: '6px 12px',
@@ -3316,7 +3476,6 @@ export default function ClienteDashboardTIB() {
                           onClick={() => {
                             const newP = tibCatalogPage + 1;
                             setTibCatalogPage(newP);
-                            fetchTibCatalog(tibCatalogSearch, newP);
                           }}
                           style={{
                             padding: '6px 12px',
@@ -3429,14 +3588,6 @@ export default function ClienteDashboardTIB() {
                   />
                 </div>
               ))}
-            </div>
-            <div style={{ display: 'none' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={undefined}
-                alt={`Paquete ${selectedPhoto.wr}`}
-                style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }}
-              />
             </div>
 
             {photoOpenError && (
@@ -4052,6 +4203,263 @@ export default function ClienteDashboardTIB() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Popover Flotante de Consignatarios Vinculados (fuera del overflow de tabla) */}
+      {activeKeywordsClient &&
+        keywordsPopoverStyle &&
+        Array.isArray(activeKeywordsClient.alias_palabras_clave) &&
+        activeKeywordsClient.alias_palabras_clave.length > 0 && (
+          <>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenKeywordsClientId(null);
+                setKeywordsPopoverStyle(null);
+              }}
+              style={{ position: 'fixed', inset: 0, zIndex: 110 }}
+            />
+            <div
+              ref={keywordsPopoverRef}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                top: keywordsPopoverStyle.top,
+                bottom: keywordsPopoverStyle.bottom,
+                left: keywordsPopoverStyle.left,
+                width: keywordsPopoverStyle.width,
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                padding: '12px',
+                zIndex: 120,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid #f3f4f6' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Tag style={{ width: '13px', height: '13px', color: '#ff5722' }} aria-hidden="true" />
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#111827' }}>
+                    Consignatarios vinculados ({activeKeywordsClient.alias_palabras_clave.length})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenKeywordsClientId(null);
+                    setKeywordsPopoverStyle(null);
+                  }}
+                  aria-label="Cerrar lista de consignatarios"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#9ca3af', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                >
+                  <X style={{ width: '14px', height: '14px' }} aria-hidden="true" />
+                </button>
+              </div>
+
+              <div
+                style={{
+                  maxHeight: keywordsPopoverStyle.maxHeight,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '5px',
+                  paddingRight: '2px',
+                }}
+              >
+                {activeKeywordsClient.alias_palabras_clave.map((k, ki) => (
+                  <span
+                    key={ki}
+                    style={{
+                      backgroundColor: '#f8fafc',
+                      color: '#1e293b',
+                      border: '1px solid #e2e8f0',
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      lineHeight: 1.3,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {k}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+      {/* Modal Confirmación de Restablecimiento de Contraseña */}
+      {clientToReset && (
+        <div
+          onClick={() => {
+            if (resendingEmail !== clientToReset.email) {
+              setClientToReset(null);
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 110,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '14px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              maxWidth: '460px',
+              width: '100%',
+              padding: '24px',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffedd5',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ea580c',
+                  flexShrink: 0,
+                }}
+              >
+                <KeyRound style={{ width: '22px', height: '22px' }} aria-hidden="true" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                  Restablecer Contraseña de Cliente
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                  Envío de enlace seguro por correo electrónico
+                </p>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
+              <p style={{ margin: 0, fontSize: '13px', color: '#9a3412', lineHeight: 1.5 }}>
+                ¿Deseas enviar un enlace para restablecer la contraseña de <strong>{clientToReset.nombre_completo}</strong> ({clientToReset.email})?
+              </p>
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#c2410c', lineHeight: 1.4 }}>
+                El cliente recibirá un correo con instrucciones para definir una nueva contraseña de acceso.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setClientToReset(null)}
+                disabled={resendingEmail === clientToReset.email}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: '#ffffff',
+                  color: '#4b5563',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: resendingEmail === clientToReset.email ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleResetPassword(clientToReset.email)}
+                disabled={resendingEmail === clientToReset.email}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '9px 18px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#ff5722',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: resendingEmail === clientToReset.email ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 4px rgba(255, 87, 34, 0.25)',
+                }}
+              >
+                {resendingEmail === clientToReset.email ? (
+                  <>
+                    <div style={{ width: '12px', height: '12px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <span>Enviando enlace...</span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound style={{ width: '14px', height: '14px' }} aria-hidden="true" />
+                    <span>Enviar Enlace</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notificación Flotante (Toast) */}
+      {toast && (
+        <div
+          key={toast.id}
+          role={toast.type === 'error' ? 'alert' : 'status'}
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 130,
+            maxWidth: 'min(420px, calc(100vw - 32px))',
+            backgroundColor: toast.type === 'success' ? '#ecfdf5' : toast.type === 'error' ? '#fef2f2' : '#eff6ff',
+            border: `1px solid ${toast.type === 'success' ? '#a7f3d0' : toast.type === 'error' ? '#fecaca' : '#bfdbfe'}`,
+            color: toast.type === 'success' ? '#065f46' : toast.type === 'error' ? '#991b1b' : '#1e40af',
+            borderRadius: '10px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 4px 10px -4px rgba(0, 0, 0, 0.1)',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            fontSize: '13px',
+            lineHeight: 1.4,
+          }}
+        >
+          {toast.type === 'success' ? (
+            <CheckCircle2 style={{ width: '18px', height: '18px', color: '#16a34a', flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
+          ) : (
+            <AlertCircle style={{ width: '18px', height: '18px', color: toast.type === 'error' ? '#dc2626' : '#2563eb', flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
+          )}
+          <span style={{ flex: 1, fontWeight: 600 }}>{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            aria-label="Cerrar notificación"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '2px',
+              color: 'inherit',
+              opacity: 0.7,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <X style={{ width: '14px', height: '14px' }} aria-hidden="true" />
+          </button>
         </div>
       )}
 

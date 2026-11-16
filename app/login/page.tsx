@@ -443,7 +443,7 @@ export default function ClienteLoginPage() {
             margin-top: 3px !important;
           }
           .amex-input-field {
-            font-size: 14px !important;
+            font-size: 16px !important;
             padding: 11px 12px 11px 36px !important;
           }
           .amex-submit-btn {
@@ -627,6 +627,7 @@ export default function ClienteLoginPage() {
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             <div>
               <label
+                htmlFor="login-email"
                 style={{
                   display: 'block',
                   fontSize: '12px',
@@ -640,6 +641,7 @@ export default function ClienteLoginPage() {
               <div style={{ position: 'relative' }}>
                 <i
                   className="fa-solid fa-envelope"
+                  aria-hidden="true"
                   style={{
                     position: 'absolute',
                     left: '13px',
@@ -650,6 +652,7 @@ export default function ClienteLoginPage() {
                   }}
                 />
                 <input
+                  id="login-email"
                   type="email"
                   required
                   value={email}
@@ -669,7 +672,7 @@ export default function ClienteLoginPage() {
                   marginBottom: '6px',
                 }}
               >
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1' }}>
+                <label htmlFor="login-password" style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1' }}>
                   Contraseña
                 </label>
                 <a
@@ -694,6 +697,7 @@ export default function ClienteLoginPage() {
               <div style={{ position: 'relative' }}>
                 <i
                   className="fa-solid fa-lock"
+                  aria-hidden="true"
                   style={{
                     position: 'absolute',
                     left: '13px',
@@ -704,6 +708,7 @@ export default function ClienteLoginPage() {
                   }}
                 />
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
@@ -719,6 +724,8 @@ export default function ClienteLoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showPassword}
                   style={{
                     position: 'absolute',
                     right: '12px',
@@ -734,10 +741,9 @@ export default function ClienteLoginPage() {
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
-                  tabIndex={-1}
                   title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                 >
-                  <i className={showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} />
+                  <i className={showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} aria-hidden="true" />
                 </button>
               </div>
 

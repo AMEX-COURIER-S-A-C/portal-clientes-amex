@@ -29,6 +29,7 @@ export interface ExcelExportDropdownProps {
   };
   totalFilteredCount: number;
   totalSystemCount: number;
+  onErrorToast?: (message: string) => void;
 }
 
 export default function ExcelExportDropdown({
@@ -36,26 +37,61 @@ export default function ExcelExportDropdown({
   filters,
   totalFilteredCount,
   totalSystemCount,
+  onErrorToast,
 }: ExcelExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportingLabel, setExportingLabel] = useState<string>('');
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [inlineError, setInlineError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar al hacer clic fuera
+  // Cerrar al hacer clic fuera, presionar Escape o hacer scroll/resize
   useEffect(() => {
+    if (!isOpen) return;
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
     }
+    function handleViewportChange() {
+      setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleViewportChange, true);
+    window.addEventListener('resize', handleViewportChange);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleViewportChange, true);
+      window.removeEventListener('resize', handleViewportChange);
     };
   }, [isOpen]);
+
+  const toggleMenu = () => {
+    if (isOpen) {
+      setIsOpen(false);
+      return;
+    }
+    setInlineError(null);
+    if (dropdownRef.current && typeof window !== 'undefined') {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const width = Math.min(280, window.innerWidth - 24);
+      const clampedLeft = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+      setMenuPos({
+        top: rect.bottom + 6,
+        left: clampedLeft,
+        width,
+      });
+    }
+    setIsOpen(true);
+  };
 
   const handleExport = async (scope: 'filtered' | 'all' | 'recibido_miami' | 'en_transito' | 'entregado', label: string) => {
     if (isExporting) return;
@@ -107,7 +143,12 @@ export default function ExcelExportDropdown({
       });
     } catch (err: any) {
       console.error('Error al exportar inventario a Excel:', err);
-      alert(err?.message || 'Ocurrió un error inesperado al descargar el archivo Excel.');
+      const msg = err?.message || 'Ocurrió un error inesperado al descargar el archivo Excel.';
+      if (onErrorToast) {
+        onErrorToast(msg);
+      } else {
+        setInlineError(msg);
+      }
     } finally {
       setIsExporting(false);
       setExportingLabel('');
@@ -118,7 +159,7 @@ export default function ExcelExportDropdown({
     <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
         type="button"
-        onClick={() => setIsOpen(prev => !prev)}
+        onClick={toggleMenu}
         disabled={isExporting}
         style={{
           backgroundColor: '#10b981',
@@ -163,22 +204,40 @@ export default function ExcelExportDropdown({
 
       {isOpen && (
         <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 'calc(100% + 6px)',
-            width: '280px',
-            maxWidth: 'calc(100vw - 32px)',
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
-            padding: '6px',
-            zIndex: 100,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '2px',
-          }}
+          style={
+            menuPos
+              ? {
+                  position: 'fixed',
+                  top: `${menuPos.top}px`,
+                  left: `${menuPos.left}px`,
+                  width: `${menuPos.width}px`,
+                  backgroundColor: '#ffffff',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                  padding: '6px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                }
+              : {
+                  position: 'absolute',
+                  left: 0,
+                  top: 'calc(100% + 6px)',
+                  width: '280px',
+                  maxWidth: 'calc(100vw - 32px)',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                  padding: '6px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                }
+          }
         >
           <div
             style={{
@@ -294,6 +353,29 @@ export default function ExcelExportDropdown({
               </span>
             </div>
           </button>
+        </div>
+      )}
+
+      {inlineError && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 130,
+            maxWidth: 'calc(100vw - 32px)',
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+          }}
+        >
+          {inlineError}
         </div>
       )}
     </div>

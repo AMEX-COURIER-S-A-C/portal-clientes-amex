@@ -122,12 +122,13 @@ function ClienteRegistroForm() {
       <form onSubmit={handleRegister} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label htmlFor="reg-nombre" className="block text-xs font-semibold text-slate-300 mb-1.5">
               Nombre Completo o Empresa *
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
               <input
+                id="reg-nombre"
                 type="text"
                 required
                 value={nombre}
@@ -139,12 +140,13 @@ function ClienteRegistroForm() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label htmlFor="reg-email" className="block text-xs font-semibold text-slate-300 mb-1.5">
               Correo Electrónico *
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
               <input
+                id="reg-email"
                 type="email"
                 required
                 value={email}
@@ -158,12 +160,13 @@ function ClienteRegistroForm() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label htmlFor="reg-password" className="block text-xs font-semibold text-slate-300 mb-1.5">
               Contraseña *
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
               <input
+                id="reg-password"
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
@@ -174,6 +177,8 @@ function ClienteRegistroForm() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -182,12 +187,13 @@ function ClienteRegistroForm() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label htmlFor="reg-confirm-password" className="block text-xs font-semibold text-slate-300 mb-1.5">
               Confirmar Contraseña *
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
               <input
+                id="reg-confirm-password"
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={confirmPassword}
@@ -201,12 +207,13 @@ function ClienteRegistroForm() {
 
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+          <label htmlFor="reg-direccion" className="block text-xs font-semibold text-slate-300 mb-1.5">
             Dirección de Entrega en Perú
           </label>
           <div className="relative">
-            <MapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <MapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
             <input
+              id="reg-direccion"
               type="text"
               value={direccion}
               onChange={(e) => setDireccion(e.target.value)}

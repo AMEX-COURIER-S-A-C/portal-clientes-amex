@@ -1077,6 +1077,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               style={{
                 width: '38px',
                 height: '220px',
+                flexShrink: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
@@ -1095,204 +1096,215 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               <span>0</span>
             </div>
 
-            {/* Contenedor Principal de la Gráfica */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              {/* Área de Barras con Líneas Guía Horizontales */}
+            {/* Contenedor Desplazable de la Gráfica (evita compresión o desborde en 90/365 días en móvil) */}
+            <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '2px' }}>
               <div
                 style={{
-                  position: 'relative',
-                  height: '220px',
                   display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: days > 60 ? '2px' : '4px',
-                  borderBottom: '1px solid #cbd5e1',
+                  flexDirection: 'column',
+                  minWidth: days > 90 ? '680px' : days > 30 ? '420px' : '100%',
                 }}
               >
-                {/* 4 Líneas de referencia de fondo */}
-                <div style={{ position: 'absolute', left: 0, right: 0, top: 0, borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', left: 0, right: 0, top: '25%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', left: 0, right: 0, top: '75%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                {/* Área de Barras con Líneas Guía Horizontales */}
+                <div
+                  style={{
+                    position: 'relative',
+                    height: '220px',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    gap: days > 90 ? '1px' : days > 60 ? '2px' : '4px',
+                    borderBottom: '1px solid #cbd5e1',
+                  }}
+                >
+                  {/* 4 Líneas de referencia de fondo */}
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: 0, borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: '25%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: '75%', borderBottom: '1px dashed #f1f5f9', pointerEvents: 'none' }} />
 
-                {/* Columnas de cada día */}
-                {data.tendencia_diaria.map((d, idx) => {
-                  const barHeightPct = d.total > 0 ? Math.max((d.total / yAxisMax) * 100, 3) : 0;
-                  const isHovered = hoveredBarIndex === idx;
-                  const actividad = d.actividad ?? Math.max(d.total - (d.correos || 0), 0);
-                  const otros = d.otros || 0;
-                  const pctLabel = (value: number) => {
-                    if (!d.total || value <= 0) return '0%';
-                    const p = (value / d.total) * 100;
-                    return p < 1 ? '<1%' : `${Math.round(p)}%`;
-                  };
+                  {/* Columnas de cada día */}
+                  {data.tendencia_diaria.map((d, idx) => {
+                    const barHeightPct = d.total > 0 ? Math.max((d.total / yAxisMax) * 100, 3) : 0;
+                    const isHovered = hoveredBarIndex === idx;
+                    const actividad = d.actividad ?? Math.max(d.total - (d.correos || 0), 0);
+                    const otros = d.otros || 0;
+                    const pctLabel = (value: number) => {
+                      if (!d.total || value <= 0) return '0%';
+                      const p = (value / d.total) * 100;
+                      return p < 1 ? '<1%' : `${Math.round(p)}%`;
+                    };
 
-                  // Tooltip alignment: prevent clipping on edges
-                  const isNearLeft = idx < 3;
-                  const isNearRight = idx > data.tendencia_diaria.length - 4;
+                    // Tooltip alignment: prevent clipping on horizontal or top edges
+                    const isNearLeft = idx < 3;
+                    const isNearRight = idx > data.tendencia_diaria.length - 4;
+                    const tooltipVerticalPos = barHeightPct > 55
+                      ? { top: '6px' }
+                      : { bottom: `calc(${Math.min(barHeightPct, 100)}% + 10px)` };
 
-                  return (
-                    <div
-                      key={d.fecha}
-                      onMouseEnter={() => setHoveredBarIndex(idx)}
-                      onMouseLeave={() => setHoveredBarIndex(null)}
-                      style={{
-                        flex: 1,
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'flex-end',
-                        alignItems: 'center',
-                        position: 'relative',
-                        cursor: 'pointer',
-                        zIndex: isHovered ? 25 : 1,
-                      }}
-                    >
-                      {/* Tooltip flotante interactivo */}
-                      {isHovered && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            bottom: `calc(${Math.min(barHeightPct, 100)}% + 12px)`,
-                            left: isNearLeft ? '0' : isNearRight ? 'auto' : '50%',
-                            right: isNearRight ? '0' : 'auto',
-                            transform: isNearLeft || isNearRight ? 'none' : 'translateX(-50%)',
-                            backgroundColor: '#0f172a',
-                            color: '#ffffff',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.4)',
-                            pointerEvents: 'none',
-                            whiteSpace: 'nowrap',
-                            zIndex: 40,
-                          }}
-                        >
-                          <div style={{ fontWeight: 700, borderBottom: '1px solid #334155', paddingBottom: '4px', marginBottom: '6px', fontSize: '11.5px', color: '#f8fafc' }}>
-                            📅 {d.dia} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({d.fecha})</span>
-                          </div>
-                          <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '4px', fontSize: '12px' }}>
-                            Total: {d.total} {d.total === 1 ? 'evento' : 'eventos'}
-                          </div>
-                          {d.total > 0 && (
-                            <div style={{ fontSize: '10.5px', color: '#cbd5e1', marginBottom: '6px' }}>
-                              Actividad cliente: <b style={{ color: '#ffffff' }}>{actividad}</b> ({pctLabel(actividad)})
-                              {' · '}
-                              Correos: <b style={{ color: '#ffffff' }}>{d.correos || 0}</b> ({pctLabel(d.correos || 0)})
+                    return (
+                      <div
+                        key={d.fecha}
+                        onMouseEnter={() => setHoveredBarIndex(idx)}
+                        onMouseLeave={() => setHoveredBarIndex(null)}
+                        style={{
+                          flex: 1,
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                          position: 'relative',
+                          cursor: 'pointer',
+                          zIndex: isHovered ? 25 : 1,
+                        }}
+                      >
+                        {/* Tooltip flotante interactivo */}
+                        {isHovered && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              ...tooltipVerticalPos,
+                              left: isNearLeft ? '0' : isNearRight ? 'auto' : '50%',
+                              right: isNearRight ? '0' : 'auto',
+                              transform: isNearLeft || isNearRight ? 'none' : 'translateX(-50%)',
+                              backgroundColor: '#0f172a',
+                              color: '#ffffff',
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              fontSize: '11px',
+                              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.4)',
+                              pointerEvents: 'none',
+                              whiteSpace: 'nowrap',
+                              zIndex: 40,
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, borderBottom: '1px solid #334155', paddingBottom: '4px', marginBottom: '6px', fontSize: '11.5px', color: '#f8fafc' }}>
+                              📅 {d.dia} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({d.fecha})</span>
                             </div>
-                          )}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '3px', fontSize: '11px' }}>
-                            {d.logins > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <span style={{ color: '#60a5fa' }}>● Logins:</span>
-                                <b style={{ color: '#ffffff' }}>{d.logins} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.logins)})</span></b>
+                            <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '4px', fontSize: '12px' }}>
+                              Total: {d.total} {d.total === 1 ? 'evento' : 'eventos'}
+                            </div>
+                            {d.total > 0 && (
+                              <div style={{ fontSize: '10.5px', color: '#cbd5e1', marginBottom: '6px' }}>
+                                Actividad cliente: <b style={{ color: '#ffffff' }}>{actividad}</b> ({pctLabel(actividad)})
+                                {' · '}
+                                Correos: <b style={{ color: '#ffffff' }}>{d.correos || 0}</b> ({pctLabel(d.correos || 0)})
                               </div>
                             )}
-                            {d.busquedas > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <span style={{ color: '#34d399' }}>● Búsquedas:</span>
-                                <b style={{ color: '#ffffff' }}>{d.busquedas} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.busquedas)})</span></b>
-                              </div>
-                            )}
-                            {d.fotos > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <span style={{ color: '#fb923c' }}>● Fotos Vistas:</span>
-                                <b style={{ color: '#ffffff' }}>{d.fotos} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.fotos)})</span></b>
-                              </div>
-                            )}
-                            {d.excels > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <span style={{ color: '#c084fc' }}>● Excels:</span>
-                                <b style={{ color: '#ffffff' }}>{d.excels} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.excels)})</span></b>
-                              </div>
-                            )}
-                            {otros > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <span style={{ color: '#cbd5e1' }}>● Otras acciones:</span>
-                                <b style={{ color: '#ffffff' }}>{otros} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(otros)})</span></b>
-                              </div>
-                            )}
-                            {(d.correos || 0) > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderTop: '1px solid #334155', paddingTop: '4px', marginTop: '2px' }}>
-                                <span style={{ color: '#38bdf8' }}>✉️ Correos automáticos:</span>
-                                <b style={{ color: '#ffffff' }}>{d.correos} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.correos || 0)})</span></b>
-                              </div>
-                            )}
-                            {d.total === 0 && (
-                              <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin eventos registrados</div>
-                            )}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '3px', fontSize: '11px' }}>
+                              {d.logins > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                  <span style={{ color: '#60a5fa' }}>● Logins:</span>
+                                  <b style={{ color: '#ffffff' }}>{d.logins} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.logins)})</span></b>
+                                </div>
+                              )}
+                              {d.busquedas > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                  <span style={{ color: '#34d399' }}>● Búsquedas:</span>
+                                  <b style={{ color: '#ffffff' }}>{d.busquedas} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.busquedas)})</span></b>
+                                </div>
+                              )}
+                              {d.fotos > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                  <span style={{ color: '#fb923c' }}>● Fotos Vistas:</span>
+                                  <b style={{ color: '#ffffff' }}>{d.fotos} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.fotos)})</span></b>
+                                </div>
+                              )}
+                              {d.excels > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                  <span style={{ color: '#c084fc' }}>● Excels:</span>
+                                  <b style={{ color: '#ffffff' }}>{d.excels} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.excels)})</span></b>
+                                </div>
+                              )}
+                              {otros > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                  <span style={{ color: '#cbd5e1' }}>● Otras acciones:</span>
+                                  <b style={{ color: '#ffffff' }}>{otros} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(otros)})</span></b>
+                                </div>
+                              )}
+                              {(d.correos || 0) > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderTop: '1px solid #334155', paddingTop: '4px', marginTop: '2px' }}>
+                                  <span style={{ color: '#38bdf8' }}>✉️ Correos automáticos:</span>
+                                  <b style={{ color: '#ffffff' }}>{d.correos} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({pctLabel(d.correos || 0)})</span></b>
+                                </div>
+                              )}
+                              {d.total === 0 && (
+                                <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin eventos registrados</div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Barra apilada o indicador neutro */}
-                      {d.total > 0 ? (
-                        <div
-                          style={{
-                            width: '100%',
-                            maxWidth: '28px',
-                            height: `${barHeightPct}%`,
-                            borderRadius: '4px 4px 0 0',
-                            display: 'flex',
-                            flexDirection: 'column-reverse',
-                            overflow: 'hidden',
-                            boxShadow: isHovered ? '0 0 0 2px #0284c7' : 'none',
-                            filter: isHovered ? 'brightness(1.1)' : 'none',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          {d.logins > 0 && <div style={{ height: `${(d.logins / d.total) * 100}%`, backgroundColor: '#3b82f6' }} />}
-                          {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
-                          {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
-                          {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
-                          {otros > 0 && <div style={{ height: `${(otros / d.total) * 100}%`, backgroundColor: '#94a3b8' }} />}
-                          {(d.correos || 0) > 0 && <div style={{ height: `${((d.correos || 0) / d.total) * 100}%`, backgroundColor: '#0284c7' }} />}
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            width: '100%',
-                            maxWidth: '28px',
-                            height: '2px',
-                            backgroundColor: isHovered ? '#94a3b8' : '#e2e8f0',
-                            transition: 'background-color 0.15s ease',
-                          }}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        {/* Barra apilada o indicador neutro */}
+                        {d.total > 0 ? (
+                          <div
+                            style={{
+                              width: '100%',
+                              maxWidth: '28px',
+                              height: `${barHeightPct}%`,
+                              borderRadius: '4px 4px 0 0',
+                              display: 'flex',
+                              flexDirection: 'column-reverse',
+                              overflow: 'hidden',
+                              boxShadow: isHovered ? '0 0 0 2px #0284c7' : 'none',
+                              filter: isHovered ? 'brightness(1.1)' : 'none',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {d.logins > 0 && <div style={{ height: `${(d.logins / d.total) * 100}%`, backgroundColor: '#3b82f6' }} />}
+                            {d.busquedas > 0 && <div style={{ height: `${(d.busquedas / d.total) * 100}%`, backgroundColor: '#10b981' }} />}
+                            {d.fotos > 0 && <div style={{ height: `${(d.fotos / d.total) * 100}%`, backgroundColor: '#f97316' }} />}
+                            {d.excels > 0 && <div style={{ height: `${(d.excels / d.total) * 100}%`, backgroundColor: '#8b5cf6' }} />}
+                            {otros > 0 && <div style={{ height: `${(otros / d.total) * 100}%`, backgroundColor: '#94a3b8' }} />}
+                            {(d.correos || 0) > 0 && <div style={{ height: `${((d.correos || 0) / d.total) * 100}%`, backgroundColor: '#0284c7' }} />}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              width: '100%',
+                              maxWidth: '28px',
+                              height: '2px',
+                              backgroundColor: isHovered ? '#94a3b8' : '#e2e8f0',
+                              transition: 'background-color 0.15s ease',
+                            }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
 
-              {/* Fila de Etiquetas de Fecha (Eje X) */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: days > 60 ? '2px' : '4px',
-                  paddingTop: '8px',
-                  height: '24px',
-                }}
-              >
-                {data.tendencia_diaria.map((d, idx) => {
-                  const step = days <= 7 ? 1 : days <= 15 ? 2 : days <= 30 ? 3 : days <= 90 ? 7 : 14;
-                  const isVisible = idx % step === 0 || idx === data.tendencia_diaria.length - 1;
-                  return (
-                    <div
-                      key={d.fecha}
-                      style={{
-                        flex: 1,
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}
-                    >
-                      {isVisible && (
-                        <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                          {d.dia}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                {/* Fila de Etiquetas de Fecha (Eje X) */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: days > 90 ? '1px' : days > 60 ? '2px' : '4px',
+                    paddingTop: '8px',
+                    height: '24px',
+                  }}
+                >
+                  {data.tendencia_diaria.map((d, idx) => {
+                    const step = days <= 7 ? 1 : days <= 15 ? 2 : days <= 30 ? 3 : days <= 90 ? 7 : 14;
+                    const isVisible = idx % step === 0 || idx === data.tendencia_diaria.length - 1;
+                    return (
+                      <div
+                        key={d.fecha}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        {isVisible && (
+                          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                            {d.dia}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -1535,7 +1547,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
 
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             {/* Buscador de cliente */}
-            <div style={{ position: 'relative', width: '240px' }}>
+            <div style={{ position: 'relative', width: '240px', maxWidth: '100%' }}>
               <Search style={{ width: '14px', height: '14px', color: '#94a3b8', position: 'absolute', left: '10px', top: '10px' }} />
               <input
                 type="text"
@@ -1895,7 +1907,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 })
               ) : (
                 <tr>
-                  <td colSpan={11} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                  <td colSpan={12} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                     No se encontraron clientes que coincidan con el filtro actual.
                   </td>
                 </tr>

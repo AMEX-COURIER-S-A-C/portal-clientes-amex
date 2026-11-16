@@ -255,10 +255,10 @@ export default function ConfigurarClientePage() {
     <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
       
       {/* 1. Header Superior */}
-      <header style={{ backgroundColor: '#111827', borderBottom: '1px solid #1f2937', color: '#ffffff', padding: '0 24px', height: '62px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 40 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <img src="/images/logo-amex-clean.png" alt="AMEX Courier" style={{ height: '32px', objectFit: 'contain' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <header style={{ backgroundColor: '#111827', borderBottom: '1px solid #1f2937', color: '#ffffff', padding: '10px 16px', minHeight: '62px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', position: 'sticky', top: 0, zIndex: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', minWidth: 0 }}>
+          <img src="/images/logo-amex-clean.png" alt="AMEX Courier" style={{ height: '30px', objectFit: 'contain' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-0.2px', color: '#f3f4f6' }}>
               Portal de Clientes
             </span>
@@ -400,7 +400,7 @@ export default function ConfigurarClientePage() {
               </label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {/* Botón Desplegable estilo Catálogo de Consignatarios */}
-                <div style={{ position: 'relative', flex: 1, minWidth: '280px' }}>
+                <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 0 }}>
                   <button
                     type="button"
                     onClick={() => setIsTibDropdownOpen((prev) => !prev)}
@@ -527,7 +527,7 @@ export default function ConfigurarClientePage() {
                           />
                           <input
                             type="text"
-                            autoFocus
+                            autoFocus={typeof window !== 'undefined' && window.innerWidth >= 768}
                             value={tibQuery}
                             onChange={(e) => setTibQuery(e.target.value)}
                             onKeyDown={(e) => {
@@ -693,7 +693,7 @@ export default function ConfigurarClientePage() {
                 </div>
 
                 {/* Campo opcional de texto manual */}
-                <div style={{ display: 'flex', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', maxWidth: '100%' }}>
                   <input
                     type="text"
                     value={keywordInput}
@@ -701,6 +701,8 @@ export default function ConfigurarClientePage() {
                     placeholder="O escribe texto manual..."
                     style={{
                       width: '210px',
+                      maxWidth: '100%',
+                      flex: '1 1 160px',
                       height: '42px',
                       padding: '0 10px',
                       borderRadius: '6px',
@@ -747,10 +749,11 @@ export default function ConfigurarClientePage() {
           {/* SECCIÓN 2: INFORMACIÓN GENERAL DEL CLIENTE */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '18px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label htmlFor="cfg-nombre" style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Consignatario / Nombre Completo
               </label>
               <input
+                id="cfg-nombre"
                 type="text"
                 required
                 value={nombreCompleto}
@@ -760,16 +763,17 @@ export default function ConfigurarClientePage() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label htmlFor="cfg-email" style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Correo de Acceso (Login)
               </label>
               <input
+                id="cfg-email"
                 type="email"
                 disabled
                 value={email}
                 style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', color: '#64748b', fontSize: '13px', fontFamily: 'monospace' }}
               />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>Enlazado a la cuenta de autenticación.</span>
                 <button
                   type="button"
@@ -821,10 +825,11 @@ export default function ConfigurarClientePage() {
 
             {/* Control de Estado de Cuenta (Activar / Desactivar) */}
             <div style={{
-              gridColumn: 'span 2',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
               padding: '12px 16px',
               borderRadius: '8px',
               backgroundColor: activo ? '#f0fdf4' : '#fef2f2',
@@ -884,7 +889,7 @@ export default function ConfigurarClientePage() {
           </div>
 
           {/* Botones de Acción */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '18px', borderTop: '1px solid #e2e8f0', marginTop: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', paddingTop: '18px', borderTop: '1px solid #e2e8f0', marginTop: '10px' }}>
             <Link
               href="/?tab=configuracion"
               style={{ padding: '10px 18px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontSize: '13px', fontWeight: 700, textDecoration: 'none' }}

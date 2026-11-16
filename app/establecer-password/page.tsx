@@ -190,7 +190,7 @@ export default function EstablecerPasswordPage() {
           }}
         >
           <img
-            src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png"
+            src="/images/logo-amex-clean.png"
             alt="AMEX Courier"
             style={{ width: '150px', height: 'auto', margin: '0 auto 12px auto', display: 'block' }}
           />
@@ -253,7 +253,6 @@ export default function EstablecerPasswordPage() {
               <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
                 Conectando con el portal seguro de AMEX Courier.
               </p>
-              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
             </div>
           )}
 
@@ -409,6 +408,7 @@ export default function EstablecerPasswordPage() {
               {/* Campo 1: Nueva Contraseña */}
               <div style={{ marginBottom: '16px' }}>
                 <label
+                  htmlFor="new-password"
                   style={{
                     display: 'block',
                     fontSize: '12px',
@@ -421,6 +421,7 @@ export default function EstablecerPasswordPage() {
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
+                    id="new-password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
@@ -441,7 +442,8 @@ export default function EstablecerPasswordPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
+                    aria-label={showPassword ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
+                    aria-pressed={showPassword}
                     style={{
                       position: 'absolute',
                       right: '10px',
@@ -475,6 +477,7 @@ export default function EstablecerPasswordPage() {
               {/* Campo 2: Confirmar Contraseña */}
               <div style={{ marginBottom: '22px' }}>
                 <label
+                  htmlFor="confirm-password"
                   style={{
                     display: 'block',
                     fontSize: '12px',
@@ -487,6 +490,7 @@ export default function EstablecerPasswordPage() {
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
+                    id="confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
                     value={confirmPassword}
@@ -513,7 +517,8 @@ export default function EstablecerPasswordPage() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    tabIndex={-1}
+                    aria-label={showConfirmPassword ? 'Ocultar confirmación de contraseña' : 'Mostrar confirmación de contraseña'}
+                    aria-pressed={showConfirmPassword}
                     style={{
                       position: 'absolute',
                       right: '10px',
