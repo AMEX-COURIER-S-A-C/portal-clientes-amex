@@ -183,8 +183,8 @@ export default function ClienteLoginPage() {
             zIndex: 2,
             padding: '28px 36px',
             borderRadius: 20,
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(16px)',
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(10px)',
             border: theme.shellBorder,
             boxShadow: theme.shellShadow,
             display: 'flex',
@@ -284,8 +284,8 @@ export default function ClienteLoginPage() {
           grid-template-columns: 1.08fr 1fr;
           border-radius: 22px;
           overflow: hidden;
-          background: rgba(15, 23, 42, 0.8);
-          backdrop-filter: blur(20px);
+          background: rgba(15, 23, 42, 0.84);
+          backdrop-filter: blur(10px);
           border: ${theme.shellBorder};
           box-shadow: ${theme.shellShadow};
           animation: amexLoginShellIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;

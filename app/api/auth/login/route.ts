@@ -47,8 +47,8 @@ export async function POST(req: NextRequest) {
       password,
     });
 
-    // 2. Si falla y es una cuenta superadmin de AMEX, sincronizar con la base maestra de ERP
-    if (portalError && isSuperadminEmail(cleanEmail)) {
+    // 2. Si falla y es una cuenta superadmin de AMEX, sincronizar con la base maestra de ERP (solo si está configurada)
+    if (portalError && isSuperadminEmail(cleanEmail) && MASTER_URL && MASTER_ANON_KEY) {
       try {
         const masterClient = createClient(MASTER_URL, MASTER_ANON_KEY, {
           auth: { persistSession: false, autoRefreshToken: false },

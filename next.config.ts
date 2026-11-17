@@ -16,7 +16,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: '/(.*)',
+        // Evita caché en rutas HTML y APIs, permitiendo que Next.js cachee assets inmutables (/_next/static) e imágenes
+        source: '/((?!_next/static|_next/image|images/|favicon\\.ico|logo-amex\\.jpg).*)',
         headers: [
           {
             key: 'Cache-Control',

@@ -432,13 +432,14 @@ function drawBuilding3D(
     ctx.lineTo(cx, by - 38 * scale);
     ctx.stroke();
     const blink = 0.35 + 0.65 * Math.abs(Math.sin(timeSec * 2.8 + bx * 0.01));
+    ctx.fillStyle = `rgba(239, 68, 68, ${(blink * 0.28).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(cx, by - 38 * scale, 5.2, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = `rgba(239, 68, 68, ${blink.toFixed(2)})`;
-    ctx.shadowColor = '#ef4444';
-    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.arc(cx, by - 38 * scale, 2.2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
   } else if (b.roofType === 'stepped') {
     ctx.fillStyle = b.frontColor;
     ctx.fillRect(bx + bw * 0.16, by - 12 * scale, bw * 0.68, 12 * scale);
@@ -484,7 +485,7 @@ function drawBuilding3D(
     ctx.strokeRect(sfX, sfY, sfW, sfH);
   }
 
-  // 6. Franjas de iluminación de oficinas
+  // 6. Franjas de iluminación de oficinas (sin asignar cientos de CanvasGradient por frame)
   const stripH = Math.max(2.2, 3.2 * scale);
   for (const s of b.strips) {
     const sy = by + s.ry * bh;
@@ -492,17 +493,9 @@ function drawBuilding3D(
     const sx = bx + s.rxStart * bw;
     const sw = Math.max(6, (s.rxEnd - s.rxStart) * bw);
 
-    const winGrad = ctx.createLinearGradient(sx, sy, sx + sw, sy);
-    if (s.warm) {
-      winGrad.addColorStop(0, `rgba(253, 224, 71, ${s.alpha})`);
-      winGrad.addColorStop(0.5, `rgba(245, 158, 11, ${s.alpha * 0.85})`);
-      winGrad.addColorStop(1, `rgba(253, 224, 71, ${s.alpha * 0.4})`);
-    } else {
-      winGrad.addColorStop(0, `rgba(125, 211, 252, ${s.alpha * 0.85})`);
-      winGrad.addColorStop(0.5, `rgba(56, 189, 248, ${s.alpha * 0.65})`);
-      winGrad.addColorStop(1, `rgba(125, 211, 252, ${s.alpha * 0.3})`);
-    }
-    ctx.fillStyle = winGrad;
+    ctx.fillStyle = s.warm
+      ? `rgba(251, 207, 74, ${(s.alpha * 0.85).toFixed(2)})`
+      : `rgba(103, 198, 245, ${(s.alpha * 0.7).toFixed(2)})`;
     ctx.fillRect(sx, sy, sw, stripH);
 
     ctx.fillStyle = b.frontColor;
@@ -952,8 +945,6 @@ function drawAmexCargoPlane3D(
   ctx.fill();
 
   ctx.fillStyle = '#38bdf8';
-  ctx.shadowColor = 'rgba(56, 189, 248, 0.9)';
-  ctx.shadowBlur = 7;
   ctx.beginPath();
   ctx.moveTo(66, -10);
   ctx.lineTo(82, -8.5);
@@ -961,15 +952,15 @@ function drawAmexCargoPlane3D(
   ctx.lineTo(68, -3);
   ctx.closePath();
   ctx.fill();
-  ctx.shadowBlur = 0;
 
+  ctx.fillStyle = 'rgba(253, 224, 71, 0.28)';
+  ctx.beginPath();
+  ctx.arc(96, 4.5, 5.2, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = '#fef9c3';
-  ctx.shadowColor = '#fde047';
-  ctx.shadowBlur = 9;
   ctx.beginPath();
   ctx.arc(96, 4.5, 2.2, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
 
   if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
     ctx.save();
@@ -1034,20 +1025,23 @@ function drawAmexCargoPlane3D(
 
   const strobe = Math.sin(timeSec * 7.5) > 0.3;
   if (strobe) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+    ctx.beginPath();
+    ctx.arc(-108, -51, 6, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur = 12;
     ctx.beginPath();
     ctx.arc(-108, -51, 2.5, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+  ctx.beginPath();
+  ctx.arc(-48, 24, 4.8, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = '#ef4444';
-  ctx.shadowColor = '#ef4444';
-  ctx.shadowBlur = 8;
   ctx.beginPath();
   ctx.arc(-48, 24, 2, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
 
   ctx.restore();
 }
@@ -1238,12 +1232,12 @@ function drawAmexDeliveryTruck3D(
 
   ctx.fillStyle = '#cbd5e1';
   ctx.fillRect(184, -22, 3, 6);
+  ctx.fillStyle = 'rgba(245, 158, 11, 0.3)';
+  drawRoundedRect(ctx, 179.5, -29, 10, 11.5, 4);
+  ctx.fill();
   ctx.fillStyle = '#fef9c3';
-  ctx.shadowColor = '#f59e0b';
-  ctx.shadowBlur = 12;
   drawRoundedRect(ctx, 181.5, -27, 6, 7.5, 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
 
   ctx.fillStyle = '#475569';
   drawRoundedRect(ctx, 180, -15.5, 8.5, 5.5, 2);
@@ -1289,19 +1283,16 @@ function drawAmexDeliveryTruck3D(
   ctx.fillRect(2, -18, 124, 4.8);
 
   ctx.fillStyle = '#fbbf24';
-  ctx.shadowColor = '#f59e0b';
-  ctx.shadowBlur = 7;
   ctx.beginPath();
   ctx.arc(6, -73, 2, 0, Math.PI * 2);
   ctx.arc(64, -73, 1.8, 0, Math.PI * 2);
   ctx.arc(122, -73, 2, 0, Math.PI * 2);
   ctx.fill();
 
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.32)';
+  ctx.fillRect(-4, -29, 7.5, 13);
   ctx.fillStyle = '#ef4444';
-  ctx.shadowColor = '#ef4444';
-  ctx.shadowBlur = 10;
   ctx.fillRect(-2, -27, 3.5, 9);
-  ctx.shadowBlur = 0;
 
   ctx.save();
   if (direction === -1) {
@@ -1309,8 +1300,6 @@ function drawAmexDeliveryTruck3D(
     ctx.scale(-1, 1);
   }
   if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
-    ctx.shadowColor = 'rgba(245, 158, 11, 0.38)';
-    ctx.shadowBlur = 9;
     ctx.drawImage(logoImg, 12, -62, 104, 34);
   } else {
     ctx.fillStyle = '#fbbf24';
@@ -1339,7 +1328,7 @@ export function AviationLogisticsBackdrop() {
 
     let width = window.innerWidth;
     let height = window.innerHeight;
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 
     const cloudSprites = [createVolumetricCloudSprite(0), createVolumetricCloudSprite(1)];
     const logoImg = new Image();
@@ -1348,15 +1337,52 @@ export function AviationLogisticsBackdrop() {
     const buildings = buildRealisticCityscape();
     let pedestrians = createPedestrians(width, width < 768);
 
+    // Pre-renderizado de cielo y asfalto estáticos en canvas offscreen para no recalcular gradientes cada frame
+    const staticSkyCanvas = document.createElement('canvas');
+    const buildStaticSky = (w: number, h: number) => {
+      const mobile = w < 768;
+      const rH = mobile ? 74 : 92;
+      const sH = mobile ? 16 : 22;
+      const sTopY = h - rH - sH;
+      staticSkyCanvas.width = Math.max(1, Math.floor(w));
+      staticSkyCanvas.height = Math.max(1, Math.floor(sTopY));
+      const sCtx = staticSkyCanvas.getContext('2d');
+      if (!sCtx) return;
+
+      const skyGrad = sCtx.createLinearGradient(0, 0, 0, sTopY);
+      skyGrad.addColorStop(0, '#091528');
+      skyGrad.addColorStop(0.38, '#132747');
+      skyGrad.addColorStop(0.7, '#213c63');
+      skyGrad.addColorStop(0.88, '#3b3f5c');
+      skyGrad.addColorStop(1, '#784e36');
+      sCtx.fillStyle = skyGrad;
+      sCtx.fillRect(0, 0, w, sTopY);
+
+      const horizonGlow = sCtx.createRadialGradient(
+        w * 0.5,
+        sTopY - 20,
+        20,
+        w * 0.5,
+        sTopY,
+        Math.max(w * 0.72, 480)
+      );
+      horizonGlow.addColorStop(0, 'rgba(251, 191, 36, 0.32)');
+      horizonGlow.addColorStop(0.42, 'rgba(234, 88, 12, 0.14)');
+      horizonGlow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+      sCtx.fillStyle = horizonGlow;
+      sCtx.fillRect(0, 0, w, sTopY);
+    };
+
     const resize = () => {
       width = window.innerWidth;
       height = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildStaticSky(width, height);
       pedestrians = createPedestrians(width, width < 768);
     };
     resize();
@@ -1389,12 +1415,14 @@ export function AviationLogisticsBackdrop() {
     };
 
     let rafId = 0;
+    let isDisposed = false;
     let lastTime = performance.now();
     const prefersReducedMotion =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const renderFrame = (now: number) => {
+      if (isDisposed) return;
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
       const timeSec = now / 1000;
@@ -1411,30 +1439,11 @@ export function AviationLogisticsBackdrop() {
       const sidewalkTopY = roadTopY - sidewalkHeight;
 
       // =========================================================================
-      // 1. CIELO DE CREPÚSCULO URBANO CON PROFUNDIDAD ATMOSFÉRICA
+      // 1. CIELO DE CREPÚSCULO URBANO (pre-renderizado en canvas offscreen)
       // =========================================================================
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, sidewalkTopY);
-      skyGrad.addColorStop(0, '#091528');
-      skyGrad.addColorStop(0.38, '#132747');
-      skyGrad.addColorStop(0.7, '#213c63');
-      skyGrad.addColorStop(0.88, '#3b3f5c');
-      skyGrad.addColorStop(1, '#784e36');
-      ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, width, sidewalkTopY);
-
-      const horizonGlow = ctx.createRadialGradient(
-        width * 0.5 - currentParallaxX * 0.2,
-        sidewalkTopY - 20,
-        20,
-        width * 0.5 - currentParallaxX * 0.2,
-        sidewalkTopY,
-        Math.max(width * 0.72, 480)
-      );
-      horizonGlow.addColorStop(0, 'rgba(251, 191, 36, 0.32)');
-      horizonGlow.addColorStop(0.42, 'rgba(234, 88, 12, 0.14)');
-      horizonGlow.addColorStop(1, 'rgba(15, 23, 42, 0)');
-      ctx.fillStyle = horizonGlow;
-      ctx.fillRect(0, 0, width, sidewalkTopY);
+      if (staticSkyCanvas.width > 0 && staticSkyCanvas.height > 0) {
+        ctx.drawImage(staticSkyCanvas, 0, 0, width, sidewalkTopY);
+      }
 
       // =========================================================================
       // 2. NUBES VOLUMÉTRICAS DIFUMINADAS
@@ -1734,7 +1743,7 @@ export function AviationLogisticsBackdrop() {
         logoImg
       );
 
-      if (!prefersReducedMotion) {
+      if (!prefersReducedMotion && !isDisposed) {
         rafId = window.requestAnimationFrame(renderFrame);
       }
     };
@@ -1743,7 +1752,7 @@ export function AviationLogisticsBackdrop() {
       if (document.hidden) {
         if (rafId) window.cancelAnimationFrame(rafId);
         rafId = 0;
-      } else if (!rafId && !prefersReducedMotion) {
+      } else if (!rafId && !prefersReducedMotion && !isDisposed) {
         lastTime = performance.now();
         rafId = window.requestAnimationFrame(renderFrame);
       }
@@ -1753,12 +1762,11 @@ export function AviationLogisticsBackdrop() {
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // Una sola llamada inicial (renderFrame ya programa el siguiente requestAnimationFrame)
     renderFrame(performance.now());
-    if (!prefersReducedMotion) {
-      rafId = window.requestAnimationFrame(renderFrame);
-    }
 
     return () => {
+      isDisposed = true;
       if (rafId) window.cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', handleMouseMove);

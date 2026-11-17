@@ -1,17 +1,36 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { authFetch } from '@/lib/portal/authFetch';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
-import AnalyticsDashboard from '@/components/analytics/AnalyticsDashboard';
 import PortalHeader from '@/components/warehouse/PortalHeader';
 import WarehouseView from '@/components/warehouse/WarehouseView';
-import PhotoLightboxModal from '@/components/warehouse/PhotoLightboxModal';
-import AdminConfigView from '@/components/admin/AdminConfigView';
-import AdminClientModals from '@/components/admin/AdminClientModals';
+
+const TabLoadingFallback = () => (
+  <div style={{ padding: '48px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', color: '#6b7280' }}>
+    <div style={{ width: '28px', height: '28px', border: '3px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    <span style={{ fontSize: '13px', fontWeight: 600 }}>Cargando módulo...</span>
+  </div>
+);
+
+const AnalyticsDashboard = dynamic(() => import('@/components/analytics/AnalyticsDashboard'), {
+  ssr: false,
+  loading: TabLoadingFallback,
+});
+const AdminConfigView = dynamic(() => import('@/components/admin/AdminConfigView'), {
+  ssr: false,
+  loading: TabLoadingFallback,
+});
+const AdminClientModals = dynamic(() => import('@/components/admin/AdminClientModals'), {
+  ssr: false,
+});
+const PhotoLightboxModal = dynamic(() => import('@/components/warehouse/PhotoLightboxModal'), {
+  ssr: false,
+});
 import {
   ClientePortalItem,
   formatDateForInput,
@@ -222,7 +241,6 @@ export default function ClienteDashboardTIB() {
       const p = new URLSearchParams(window.location.search).get('tab');
       if (p === 'configuracion') {
         setActiveTab('configuracion');
-        fetchClientsList();
       } else if (p === 'analiticas') {
         setActiveTab('analiticas');
       }
@@ -239,7 +257,7 @@ export default function ClienteDashboardTIB() {
         clearTimeout(toastTimerRef.current);
       }
     };
-  }, [fetchClientsList]);
+  }, []);
 
   // Cargar conteo total absoluto del sistema (sin filtros) vía servidor optimizado
   const fetchTotalSystemCount = useCallback(async (email?: string | null) => {
@@ -469,6 +487,7 @@ export default function ClienteDashboardTIB() {
   }, [openKeywordsClientId]);
 
   const isInitialFilterMount = React.useRef(true);
+  const loadedUserIdRef = React.useRef<string | null>(null);
   useEffect(() => {
     let isMounted = true;
 
@@ -483,6 +502,9 @@ export default function ClienteDashboardTIB() {
       // Ignorar si localStorage no está accesible
     }
 
+    const getInitialTab = () =>
+      typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+
     async function loadSession() {
       const { data: { session } } = await supabasePortal.auth.getSession();
       if (!isMounted) return;
@@ -491,11 +513,12 @@ export default function ClienteDashboardTIB() {
         router.replace('/login');
         return;
       }
+      loadedUserIdRef.current = session.user.id;
       setUser(session.user);
       setIsAuthChecking(false);
-      fetchTotalSystemCount(session.user.email);
+      // fetchPaquetes(1) sin filtros ya devuelve el conteo total del sistema (evita consulta duplicada)
       fetchPaquetes(session.user.email, 1);
-      if (isSuperadminEmail(session.user.email)) {
+      if (isSuperadminEmail(session.user.email) && getInitialTab() === 'configuracion') {
         fetchClientsList();
       }
     }
@@ -504,21 +527,20 @@ export default function ClienteDashboardTIB() {
     const { data: { subscription } } = supabasePortal.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
       if (event === 'SIGNED_OUT' || !session) {
+        loadedUserIdRef.current = null;
         setUser(null);
         setIsAuthChecking(true);
         router.replace('/login');
       } else if (event === 'SIGNED_IN') {
         setIsAuthChecking(false);
-        setUser((prev: any) => {
-          if (!prev || prev.id !== session.user.id) {
-            fetchTotalSystemCount(session.user.email);
-            fetchPaquetes(session.user.email, 1);
-            if (isSuperadminEmail(session.user.email)) {
-              fetchClientsList();
-            }
+        setUser(session.user);
+        if (loadedUserIdRef.current !== session.user.id) {
+          loadedUserIdRef.current = session.user.id;
+          fetchPaquetes(session.user.email, 1);
+          if (isSuperadminEmail(session.user.email) && getInitialTab() === 'configuracion') {
+            fetchClientsList();
           }
-          return session.user;
-        });
+        }
       } else if (event === 'TOKEN_REFRESHED') {
         setUser(session.user);
         setIsAuthChecking(false);
@@ -529,7 +551,7 @@ export default function ClienteDashboardTIB() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [router, fetchPaquetes, fetchTotalSystemCount, fetchClientsList]);
+  }, [router, fetchPaquetes, fetchClientsList]);
 
   const closePhotoModal = useCallback(() => {
     setSelectedPhoto(null);
@@ -601,9 +623,11 @@ export default function ClienteDashboardTIB() {
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
-    fetchTotalSystemCount(user?.email);
+    if (activeFiltersCount > 0) {
+      fetchTotalSystemCount(user?.email);
+    }
     fetchPaquetes(user?.email, currentPage);
-    if (isSuperadminEmail(user?.email)) {
+    if (isSuperadminEmail(user?.email) && activeTab === 'configuracion') {
       fetchClientsList();
     }
   };
@@ -1284,60 +1308,64 @@ export default function ClienteDashboardTIB() {
         )}
       </main>
 
-      <PhotoLightboxModal
-        selectedPhoto={selectedPhoto}
-        openingPhotoIndex={openingPhotoIndex}
-        photoOpenError={photoOpenError}
-        fallbackPhotoUrl={fallbackPhotoUrl}
-        onClose={closePhotoModal}
-        onOpenOriginalPhoto={handleOpenOriginalPhoto}
-      />
+      {selectedPhoto && (
+        <PhotoLightboxModal
+          selectedPhoto={selectedPhoto}
+          openingPhotoIndex={openingPhotoIndex}
+          photoOpenError={photoOpenError}
+          fallbackPhotoUrl={fallbackPhotoUrl}
+          onClose={closePhotoModal}
+          onOpenOriginalPhoto={handleOpenOriginalPhoto}
+        />
+      )}
 
-      <AdminClientModals
-        isAddClientOpen={isAddClientOpen}
-        setIsAddClientOpen={setIsAddClientOpen}
-        newClientNombre={newClientNombre}
-        setNewClientNombre={setNewClientNombre}
-        newClientEmail={newClientEmail}
-        setNewClientEmail={setNewClientEmail}
-        newClientKeywords={newClientKeywords}
-        setNewClientKeywords={setNewClientKeywords}
-        isCreatingClient={isCreatingClient}
-        createClientSuccess={createClientSuccess}
-        createClientError={createClientError}
-        handleCreateClientSubmit={handleCreateClientSubmit}
-        tibSearchResults={tibSearchResults}
-        isSearchingTib={isSearchingTib}
-        isTibDropdownOpen={isTibDropdownOpen}
-        setIsTibDropdownOpen={setIsTibDropdownOpen}
-        searchTibClients={searchTibClients}
-        handleAddTibKeyword={handleAddTibKeyword}
-        editingClient={editingClient}
-        setEditingClient={setEditingClient}
-        editNombre={editNombre}
-        setEditNombre={setEditNombre}
-        editKeywords={editKeywords}
-        setEditKeywords={setEditKeywords}
-        isUpdatingClient={isUpdatingClient}
-        editClientSuccess={editClientSuccess}
-        editClientError={editClientError}
-        handleUpdateClientSubmit={handleUpdateClientSubmit}
-        clientToDeactivate={clientToDeactivate}
-        setClientToDeactivate={setClientToDeactivate}
-        isTogglingActiveId={isTogglingActiveId}
-        handleToggleClientActive={handleToggleClientActive}
-        activeKeywordsClient={activeKeywordsClient}
-        keywordsPopoverStyle={keywordsPopoverStyle}
-        keywordsPopoverRef={keywordsPopoverRef}
-        onCloseKeywordsPopover={() => {
-          setOpenKeywordsClientId(null);
-          setKeywordsPopoverStyle(null);
-        }}
-        clientToReset={clientToReset}
-        setClientToReset={setClientToReset}
-        resendingEmail={resendingEmail}
-        handleResetPassword={handleResetPassword}
-      />
+      {isSuperadmin && (
+        <AdminClientModals
+          isAddClientOpen={isAddClientOpen}
+          setIsAddClientOpen={setIsAddClientOpen}
+          newClientNombre={newClientNombre}
+          setNewClientNombre={setNewClientNombre}
+          newClientEmail={newClientEmail}
+          setNewClientEmail={setNewClientEmail}
+          newClientKeywords={newClientKeywords}
+          setNewClientKeywords={setNewClientKeywords}
+          isCreatingClient={isCreatingClient}
+          createClientSuccess={createClientSuccess}
+          createClientError={createClientError}
+          handleCreateClientSubmit={handleCreateClientSubmit}
+          tibSearchResults={tibSearchResults}
+          isSearchingTib={isSearchingTib}
+          isTibDropdownOpen={isTibDropdownOpen}
+          setIsTibDropdownOpen={setIsTibDropdownOpen}
+          searchTibClients={searchTibClients}
+          handleAddTibKeyword={handleAddTibKeyword}
+          editingClient={editingClient}
+          setEditingClient={setEditingClient}
+          editNombre={editNombre}
+          setEditNombre={setEditNombre}
+          editKeywords={editKeywords}
+          setEditKeywords={setEditKeywords}
+          isUpdatingClient={isUpdatingClient}
+          editClientSuccess={editClientSuccess}
+          editClientError={editClientError}
+          handleUpdateClientSubmit={handleUpdateClientSubmit}
+          clientToDeactivate={clientToDeactivate}
+          setClientToDeactivate={setClientToDeactivate}
+          isTogglingActiveId={isTogglingActiveId}
+          handleToggleClientActive={handleToggleClientActive}
+          activeKeywordsClient={activeKeywordsClient}
+          keywordsPopoverStyle={keywordsPopoverStyle}
+          keywordsPopoverRef={keywordsPopoverRef}
+          onCloseKeywordsPopover={() => {
+            setOpenKeywordsClientId(null);
+            setKeywordsPopoverStyle(null);
+          }}
+          clientToReset={clientToReset}
+          setClientToReset={setClientToReset}
+          resendingEmail={resendingEmail}
+          handleResetPassword={handleResetPassword}
+        />
+      )}
 
       {/* Notificación Flotante (Toast) */}
       {toast && (
