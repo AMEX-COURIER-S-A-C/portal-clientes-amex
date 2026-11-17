@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const portalAdmin = getPortalAdmin();
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
 
     // 1. Consultar todos los perfiles en clientes_portal con paginación automática (sin tope de 1,000)
     const allProfiles: any[] = [];

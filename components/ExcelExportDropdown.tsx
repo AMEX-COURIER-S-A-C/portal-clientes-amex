@@ -1,5 +1,6 @@
 'use client';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
+import { authFetch } from '@/lib/portal/authFetch';
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -100,7 +101,7 @@ export default function ExcelExportDropdown({
     setExportingLabel(`Exportando (${label})...`);
 
     try {
-      const res = await fetch('/api/exportar-excel', {
+      const res = await authFetch('/api/exportar-excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
+import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
+import { normalizeClientKeywordsInput } from '@/lib/portal/keywords';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
-import { getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
+import { generateClientAuthLink, getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
+
     const body = await req.json();
     const {
       nombre_completo,
@@ -26,35 +31,7 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanNombre = nombre_completo.trim().toUpperCase();
     const isSuperadmin = isSuperadminEmail(cleanEmail);
-
-    // Palabras clave para matching: guardar ÚNICAMENTE lo seleccionado/ingresado
-    let keywords: string[] = [];
-
-    if (Array.isArray(alias_palabras_clave)) {
-      alias_palabras_clave.forEach((k: unknown) => {
-        const cleaned = cleanExactString(k);
-        if (cleaned && !keywords.includes(cleaned)) {
-          keywords.push(cleaned);
-        }
-      });
-    } else if (typeof alias_palabras_clave === 'string') {
-      alias_palabras_clave
-        .split(',')
-        .map((k) => cleanExactString(k))
-        .filter(Boolean)
-        .forEach((cleaned) => {
-          if (!keywords.includes(cleaned)) {
-            keywords.push(cleaned);
-          }
-        });
-    }
-
-    // Solo si no hay ninguna palabra clave definida, respaldar con el nombre
-    if (keywords.length === 0 && cleanNombre && !isSuperadmin) {
-      keywords.push(cleanNombre);
-    }
-
-    const portalAdmin = getPortalAdmin();
+    const keywords = normalizeClientKeywordsInput(alias_palabras_clave, cleanNombre, isSuperadmin);
 
     // 1. Verificar si ya existe en clientes_portal
     const { data: existingClient } = await portalAdmin
@@ -77,39 +54,21 @@ export async function POST(req: Request) {
     let emailError: string | null = null;
 
     if (!isSuperadmin) {
-      const baseUrl = getPortalBaseUrl();
-      const redirectUrl = `${baseUrl}/establecer-password`;
-
-      const { data: authLinkData, error: authLinkError } = await portalAdmin.auth.admin.generateLink({
-        type: 'invite',
+      const baseUrl = getPortalBaseUrl(req);
+      const redirectTo = `${baseUrl}/establecer-password`;
+      const linkRes = await generateClientAuthLink({
+        portalAdmin,
         email: cleanEmail,
-        options: {
-          redirectTo: redirectUrl,
-          data: {
-            nombre_completo: cleanNombre,
-            es_cliente_portal: true,
-          },
+        nombreCompleto: cleanNombre,
+        primaryType: 'invite',
+        redirectTo,
+        inviteData: {
+          nombre_completo: cleanNombre,
+          es_cliente_portal: true,
         },
       });
-
-      if (authLinkError || !authLinkData?.properties?.action_link) {
-        console.warn('[CrearCliente] Falló generateLink invite, intentando recovery:', authLinkError?.message);
-        const { error: recoveryError, data: recoveryData } = await portalAdmin.auth.admin.generateLink({
-          type: 'recovery',
-          email: cleanEmail,
-          options: { redirectTo: redirectUrl },
-        });
-
-        if (recoveryData?.user) {
-          authUserId = recoveryData.user.id;
-          actionLink = recoveryData.properties?.action_link || '';
-        } else {
-          console.error('[CrearCliente] Error alternativo al generar recovery link:', recoveryError);
-        }
-      } else {
-        authUserId = authLinkData.user?.id || null;
-        actionLink = authLinkData.properties.action_link;
-      }
+      authUserId = linkRes.userId;
+      actionLink = linkRes.actionLink || '';
     }
 
     // 3. Crear usuario en public.clientes_portal asegurando ID no nulo
@@ -140,7 +99,7 @@ export async function POST(req: Request) {
       const emailRes = await sendWelcomeClientEmail({
         email: cleanEmail,
         nombreCompleto: cleanNombre,
-        activationLink: toBrandedAuthLink(actionLink),
+        activationLink: toBrandedAuthLink(actionLink, req),
       });
 
       emailSent = emailRes.success;
@@ -150,35 +109,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Auto-cruce de paquetes directamente en el inventario y consulta TIB (solo para clientes regulares)
+    // 5. Auto-cruce unificado de paquetes en paquetes_portal (sin doble pasada redundante)
     let totalLinked = 0;
     try {
       if (!isSuperadmin) {
-        const validKeywords: string[] = [];
-        const candidateList = [cleanNombre, ...keywords];
-        for (const item of candidateList) {
-          const clean = cleanExactString(item);
-          if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
-            validKeywords.push(clean);
-            const compact = clean.replace(/\s+/g, '');
-            if (compact.length >= 5 && compact !== clean && !validKeywords.includes(compact)) {
-              validKeywords.push(compact);
-            }
-          }
-        }
-
-        if (validKeywords.length > 0) {
-          for (const kw of validKeywords) {
-            await portalAdmin
-              .from('paquetes_portal')
-              .update({
-                usuario_email: cleanEmail,
-                actualizado_en: new Date().toISOString(),
-              })
-              .ilike('nombre_consignatario', `%${kw}%`);
-          }
-        }
-
         try {
           await syncTibPackagesToPortal({ specificEmail: cleanEmail });
         } catch (tibErr) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireAuthSession } from '@/lib/supabase/auth-guard';
 import { applyClientScopeFilter, getClientKeywords } from '@/lib/portal/clientFilter';
 import { buildSignedPhotoPath } from '@/lib/portal/photo-link';
 import {
@@ -16,13 +16,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization') || '';
-    const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-    const accessToken = bearerMatch?.[1]?.trim();
-
-    if (!accessToken) {
-      return NextResponse.json({ error: 'Sesión no autenticada.' }, { status: 401 });
-    }
+    const auth = await requireAuthSession(req);
+    if (!auth.ok) return auth.response;
+    const { email, portalAdmin } = auth;
 
     const body = await req.json().catch(() => ({}));
     const wr = String(body?.wr || '').trim().toUpperCase();
@@ -32,17 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Referencia de foto inválida.' }, { status: 400 });
     }
 
-    const portalAdmin = getPortalAdmin();
-    const { data: authData, error: authError } = await portalAdmin.auth.getUser(accessToken);
-
-    if (authError || !authData?.user?.email) {
-      return NextResponse.json(
-        { error: 'Tu sesión expiró. Vuelve a iniciar sesión para ver la foto.' },
-        { status: 401 }
-      );
-    }
-
-    const clientInfo = await getClientKeywords(portalAdmin, authData.user.email);
+    const clientInfo = await getClientKeywords(portalAdmin, email);
 
     let pkgQuery = portalAdmin
       .from('paquetes_portal')

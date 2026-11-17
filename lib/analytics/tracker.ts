@@ -1,4 +1,5 @@
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { authFetch } from '@/lib/portal/authFetch';
 /**
  * Motor de Telemetría Invisible AMEX Courier
  * Envía eventos de uso y actividad en segundo plano sin bloquear la experiencia del usuario.
@@ -31,16 +32,9 @@ export function trackPortalEvent(options: TrackEventOptions): void {
     detalles: options.detalles || {},
   });
 
-  // Prioridad 1: navigator.sendBeacon (proceso en segundo plano del navegador, cero bloqueo)
-  if (navigator.sendBeacon) {
-    const blob = new Blob([payload], { type: 'application/json' });
-    const success = navigator.sendBeacon('/api/telemetria/evento', blob);
-    if (success) return;
-  }
-
-  // Prioridad 2: fetch asíncrono con keepalive y captura de errores silenciosa
+  // Envío asíncrono autenticado con keepalive y captura silenciosa de errores
   try {
-    fetch('/api/telemetria/evento', {
+    authFetch('/api/telemetria/evento', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payload,

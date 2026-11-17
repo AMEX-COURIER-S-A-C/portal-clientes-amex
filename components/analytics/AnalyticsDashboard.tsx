@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { authFetch } from '@/lib/portal/authFetch';
 import {
   Users,
   Search,
@@ -187,7 +188,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     setErrorMessage(null);
 
     try {
-      const res = await fetch(`/api/analiticas-uso?admin_email=${encodeURIComponent(adminEmail)}&days=${selectedDays}`);
+      const res = await authFetch(`/api/analiticas-uso?admin_email=${encodeURIComponent(adminEmail)}&days=${selectedDays}`);
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error || 'No se pudieron cargar las analíticas');
@@ -231,7 +232,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       if (from) params.set('from', from);
       if (to) params.set('to', to);
 
-      const res = await fetch(`/api/analiticas-uso?${params.toString()}`);
+      const res = await authFetch(`/api/analiticas-uso?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
         setAuditEvents(json.historial || []);

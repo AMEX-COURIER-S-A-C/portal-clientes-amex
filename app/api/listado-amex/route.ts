@@ -1,33 +1,31 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireAuthSession } from '@/lib/supabase/auth-guard';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
-import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
+import { getClientKeywords } from '@/lib/portal/clientFilter';
+import { sanitizePostgrestFilterTerm } from '@/lib/portal/keywords';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
+    const auth = await requireAuthSession(req);
+    if (!auth.ok) return auth.response;
+    const { email, portalAdmin: supabase } = auth;
+
     const { searchParams } = new URL(req.url);
     const search = (searchParams.get('search') || searchParams.get('q') || '').trim();
-    const email = (searchParams.get('email') || '').trim().toLowerCase();
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10), 1), 500);
-    const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10), 0);
+    const parsedLimit = parseInt(searchParams.get('limit') || '50', 10);
+    const parsedOffset = parseInt(searchParams.get('offset') || '0', 10);
+    const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 50, 1), 500);
+    const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
 
-    const supabase = getPortalAdmin();
-    const isRegularClient = Boolean(email && !isSuperadminEmail(email));
+    const isRegularClient = !isSuperadminEmail(email);
 
-    // Si es un cliente regular, devolver únicamente sus propios consignatarios asignados y sus conteos reales
+    // Si es un cliente regular, consultar directamente la tabla pre-calculada amex_portal_clientes
+    // filtrando por las palabras clave del cliente (evita el truncamiento a 1,000 filas de paquetes_portal)
     if (isRegularClient) {
-      const clientInfo = await getClientKeywords(supabase, email);
-
-      let pkgsQuery = supabase
-        .from('paquetes_portal')
-        .select('nombre_consignatario, estado_tib');
-
-      pkgsQuery = applyClientScopeFilter(pkgsQuery, clientInfo);
-
-      const [pkgsRes, profileRes] = await Promise.all([
-        pkgsQuery,
+      const [clientInfo, profileRes] = await Promise.all([
+        getClientKeywords(supabase, email),
         supabase
           .from('clientes_portal')
           .select('nombre_completo, alias_palabras_clave')
@@ -35,9 +33,9 @@ export async function GET(req: Request) {
           .maybeSingle(),
       ]);
 
-      if (pkgsRes.error) {
-        return NextResponse.json({ error: pkgsRes.error.message }, { status: 500 });
-      }
+      const safeKeywords = clientInfo.keywords
+        .map((kw) => sanitizePostgrestFilterTerm(kw))
+        .filter((kw) => kw.length >= 2);
 
       const statsMap = new Map<
         string,
@@ -51,28 +49,41 @@ export async function GET(req: Request) {
         }
       >();
 
-      for (const row of pkgsRes.data || []) {
-        const name = (row.nombre_consignatario || '').trim();
-        if (!name) continue;
-        if (!statsMap.has(name)) {
-          statsMap.set(name, {
-            id: name,
-            nombre: name,
-            total_paquetes: 0,
-            recibidos: 0,
-            enviados: 0,
-            entregados: 0,
-          });
-        }
-        const entry = statsMap.get(name)!;
-        entry.total_paquetes++;
-        const tib = (row.estado_tib || 'RECIBIDO').toUpperCase();
-        if (tib === 'RECIBIDO') {
-          entry.recibidos++;
-        } else if (tib === 'ENVIADO') {
-          entry.enviados++;
-        } else if (tib === 'ENTREGADO') {
-          entry.entregados++;
+      if (safeKeywords.length > 0) {
+        const orConditions = safeKeywords
+          .map((kw) => `nombre.ilike.*${kw}*`)
+          .join(',');
+
+        const pageSize = 1000;
+        let from = 0;
+        while (true) {
+          const { data: catalogRows, error: catErr } = await supabase
+            .from('amex_portal_clientes')
+            .select('id, nombre, total_paquetes, recibidos, enviados, entregados')
+            .or(orConditions)
+            .range(from, from + pageSize - 1);
+
+          if (catErr) {
+            return NextResponse.json({ error: catErr.message }, { status: 500 });
+          }
+
+          if (!catalogRows || catalogRows.length === 0) break;
+
+          for (const row of catalogRows) {
+            const name = String(row.nombre || '').trim();
+            if (!name) continue;
+            statsMap.set(name, {
+              id: row.id || name,
+              nombre: name,
+              total_paquetes: Number(row.total_paquetes || 0),
+              recibidos: Number(row.recibidos || 0),
+              enviados: Number(row.enviados || 0),
+              entregados: Number(row.entregados || 0),
+            });
+          }
+
+          if (catalogRows.length < pageSize) break;
+          from += pageSize;
         }
       }
 
@@ -115,7 +126,7 @@ export async function GET(req: Request) {
       });
     }
 
-    // Superadmin: consultar el catálogo global de 3,360 consignatarios (amex_portal_clientes)
+    // Superadmin: consultar el catálogo global de consignatarios (amex_portal_clientes)
     let query = supabase
       .from('amex_portal_clientes')
       .select('*', { count: 'exact' });

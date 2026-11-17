@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
+
     const body = await req.json();
     const { id, activo } = body;
 
@@ -14,8 +18,6 @@ export async function POST(req: Request) {
     if (typeof activo !== 'boolean') {
       return NextResponse.json({ error: 'El parámetro activo debe ser un booleano (true/false).' }, { status: 400 });
     }
-
-    const portalAdmin = getPortalAdmin();
 
     // 1. Obtener cliente actual para verificar existencia
     const { data: client, error: fetchErr } = await portalAdmin

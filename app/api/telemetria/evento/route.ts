@@ -1,6 +1,6 @@
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { NextRequest, NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireAuthSession } from '@/lib/supabase/auth-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,13 +32,21 @@ function parseUserAgent(userAgent?: string | null): { dispositivo: string; naveg
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAuthSession(req);
+    if (!auth.ok) return auth.response;
+    const { email: cleanEmail, portalAdmin } = auth;
+
+    if (isSuperadminEmail(cleanEmail)) {
+      // Ignorar silenciosamente las acciones de administradores
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+
     let body: any = {};
     const contentType = req.headers.get('content-type') || '';
 
     if (contentType.includes('application/json')) {
       body = await req.json().catch(() => ({}));
     } else {
-      // Soporte para navigator.sendBeacon con text/plain o blob
       const text = await req.text().catch(() => '');
       try {
         body = text ? JSON.parse(text) : {};
@@ -47,25 +55,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { usuario_email, nombre_cliente, tipo_evento, detalles } = body;
+    const { nombre_cliente, tipo_evento, detalles } = body;
 
-    if (!usuario_email || !tipo_evento) {
-      return NextResponse.json({ error: 'Faltan campos requeridos (usuario_email, tipo_evento)' }, { status: 400 });
+    if (!tipo_evento || typeof tipo_evento !== 'string' || !tipo_evento.trim()) {
+      return NextResponse.json({ error: 'Faltan campos requeridos (tipo_evento)' }, { status: 400 });
     }
 
-    const cleanEmail = String(usuario_email).trim().toLowerCase();
-    if (isSuperadminEmail(cleanEmail)) {
-      // Ignorar silenciosamente las acciones de administradores
-      return NextResponse.json({ ok: true, ignored: true });
-    }
-    const cleanTipo = String(tipo_evento).trim().toUpperCase();
+    const cleanTipo = tipo_evento.trim().toUpperCase();
     const userAgent = req.headers.get('user-agent');
     const { dispositivo, navegador } = parseUserAgent(userAgent);
 
     const forwardedFor = req.headers.get('x-forwarded-for');
     const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : 'Anonimizada';
-
-    const portalAdmin = getPortalAdmin();
 
     const { error } = await portalAdmin.from('portal_eventos_uso').insert({
       usuario_email: cleanEmail,
@@ -86,6 +87,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.warn('[Telemetría Excepción]', err?.message);
-    return NextResponse.json({ ok: false }, { status: 200 }); // Siempre 200 para no romper beacon
+    return NextResponse.json({ ok: false, error: 'Error al registrar evento de telemetría.' }, { status: 500 });
   }
 }

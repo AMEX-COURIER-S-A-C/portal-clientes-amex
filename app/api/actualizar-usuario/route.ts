@@ -1,18 +1,22 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { syncTibPackagesToPortal, cleanExactString } from '@/lib/portal/syncTibToPortal';
-import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
+import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
+import { normalizeClientKeywordsInput } from '@/lib/portal/keywords';
+import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
 export async function GET(req: Request) {
   try {
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
+
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
     }
 
-    const portalAdmin = getPortalAdmin();
     const { data: client, error } = await portalAdmin
       .from('clientes_portal')
       .select('*')
@@ -28,7 +32,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
-    // Contar cuántos paquetes tiene actualmente en paquetes_portal usando el filtro dinámico
     const clientInfo = await getClientKeywords(portalAdmin, client.email);
     let countQuery = portalAdmin
       .from('paquetes_portal')
@@ -47,6 +50,10 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
+
     const body = await req.json();
     const {
       id,
@@ -58,8 +65,6 @@ export async function PUT(req: Request) {
     if (!id) {
       return NextResponse.json({ error: 'El ID del cliente es requerido.' }, { status: 400 });
     }
-
-    const portalAdmin = getPortalAdmin();
 
     // 1. Obtener cliente actual
     const { data: existingClient, error: fetchErr } = await portalAdmin
@@ -79,33 +84,7 @@ export async function PUT(req: Request) {
 
     const isSuperadminTarget = isSuperadminEmail(existingClient.email);
     const cleanNombre = nombre_completo ? String(nombre_completo).trim().toUpperCase() : existingClient.nombre_completo;
-
-    // Normalizar lista de palabras clave (alias): usar ÚNICAMENTE lo que el usuario guardó
-    let keywords: string[] = [];
-
-    if (Array.isArray(alias_palabras_clave)) {
-      alias_palabras_clave.forEach((k: unknown) => {
-        const cleaned = cleanExactString(k);
-        if (cleaned && !keywords.includes(cleaned)) {
-          keywords.push(cleaned);
-        }
-      });
-    } else if (typeof alias_palabras_clave === 'string') {
-      alias_palabras_clave
-        .split(',')
-        .map((k) => cleanExactString(k))
-        .filter(Boolean)
-        .forEach((cleaned) => {
-          if (!keywords.includes(cleaned)) {
-            keywords.push(cleaned);
-          }
-        });
-    }
-
-    // Solo si no hay ninguna palabra clave definida, respaldar con el nombre
-    if (keywords.length === 0 && cleanNombre && !isSuperadminTarget) {
-      keywords.push(cleanNombre);
-    }
+    const keywords = normalizeClientKeywordsInput(alias_palabras_clave, cleanNombre, isSuperadminTarget);
 
     // 2. Actualizar registro en public.clientes_portal (protegiendo estado activo de Superadmin)
     const updatePayload: Record<string, any> = {
@@ -132,79 +111,18 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Error al actualizar datos en base de datos.' }, { status: 500 });
     }
 
-    // 3. Re-vincular paquetes inteligente en paquetes_portal (solo para clientes regulares)
+    // 3. Re-vincular paquetes de forma unificada en paquetes_portal (sin doble pasada redundante)
     let totalLinked = 0;
     try {
       const clientEmail = existingClient.email.toLowerCase();
 
       if (!isSuperadminTarget) {
-        // Recopilar palabras clave válidas (mínimo 2 caracteres, ignorar genéricos como 'AMEX')
-        const validKeywords: string[] = [];
-        const candidateList = [cleanNombre, ...keywords];
-        
-        for (const item of candidateList) {
-          const clean = cleanExactString(item);
-          if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
-            validKeywords.push(clean);
-            const compact = clean.replace(/\s+/g, '');
-            if (compact.length >= 5 && compact !== clean && !validKeywords.includes(compact)) {
-              validKeywords.push(compact);
-            }
-          }
+        try {
+          await syncTibPackagesToPortal({ specificEmail: clientEmail });
+        } catch (tibErr) {
+          console.warn('[ActualizarCliente] Aviso al sincronizar TIB API:', tibErr);
         }
 
-        // Vincular paquetes en el inventario y desvincular palabras clave eliminadas
-        if (validKeywords.length > 0) {
-          // 1. Desvincular cualquier paquete de este cliente que ya no coincida con sus palabras clave actuales
-          const { data: currentAssigned } = await portalAdmin
-            .from('paquetes_portal')
-            .select('id, nombre_consignatario')
-            .eq('usuario_email', clientEmail);
-
-          if (currentAssigned && currentAssigned.length > 0) {
-            const orphanedIds: number[] = [];
-            for (const pkg of currentAssigned) {
-              const cName = (pkg.nombre_consignatario || '').toUpperCase();
-              const matchesAny = validKeywords.some((kw) => cName.includes(kw.toUpperCase()));
-              if (!matchesAny) {
-                orphanedIds.push(pkg.id);
-              }
-            }
-
-            if (orphanedIds.length > 0) {
-              for (let i = 0; i < orphanedIds.length; i += 500) {
-                const chunk = orphanedIds.slice(i, i + 500);
-                await portalAdmin
-                  .from('paquetes_portal')
-                  .update({
-                    usuario_email: ADMIN_MASTER_EMAIL,
-                    actualizado_en: new Date().toISOString(),
-                  })
-                  .in('id', chunk);
-              }
-            }
-          }
-
-          // 2. Asignar los paquetes que coinciden con las palabras clave vigentes
-          for (const kw of validKeywords) {
-            await portalAdmin
-              .from('paquetes_portal')
-              .update({
-                usuario_email: clientEmail,
-                actualizado_en: new Date().toISOString(),
-              })
-              .ilike('nombre_consignatario', `%${kw}%`);
-          }
-
-          // Consultar también la API de TIB en vivo para garantizar que cualquier paquete histórico o reciente sea importado
-          try {
-            await syncTibPackagesToPortal({ specificEmail: clientEmail });
-          } catch (tibErr) {
-            console.warn('[ActualizarCliente] Aviso al sincronizar TIB API:', tibErr);
-          }
-        }
-
-        // Contar el total de paquetes vinculados a este cliente (usando el filtro dinámico multi-cuenta)
         const updatedClientInfo = await getClientKeywords(portalAdmin, clientEmail);
         let finalCountQuery = portalAdmin
           .from('paquetes_portal')

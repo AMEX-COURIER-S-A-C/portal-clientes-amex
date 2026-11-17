@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
 import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
-import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json().catch(() => ({ email: null }));
-
-    // Seguridad: solo el superadmin puede sincronizar en lote
-    if (!isSuperadminEmail(email)) {
-      return NextResponse.json({ error: 'Acceso no autorizado' }, { status: 403 });
-    }
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
 
     // Sincronización oficial DIRECTAMENTE desde la API de TIB
     const syncRes = await syncTibPackagesToPortal();

@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { cleanExactString } from './syncTibToPortal';
+import { cleanExactString, sanitizePostgrestFilterTerm } from './keywords';
 import { isSuperadminEmail } from './superadmin';
 
 export interface ClientKeywordsInfo {
@@ -16,10 +16,13 @@ export async function getClientKeywords(
   portalAdmin: SupabaseClient,
   rawEmail: string
 ): Promise<ClientKeywordsInfo> {
-  const cleanEmail = (rawEmail || '').trim().toLowerCase();
-  const isSuperadmin = isSuperadminEmail(cleanEmail);
+  const cleanEmail = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+  if (!cleanEmail) {
+    return { isSuperadmin: false, cleanEmail: '', keywords: [] };
+  }
 
-  if (isSuperadmin || !cleanEmail) {
+  const isSuperadmin = isSuperadminEmail(cleanEmail);
+  if (isSuperadmin) {
     return { isSuperadmin: true, cleanEmail, keywords: [] };
   }
 
@@ -63,12 +66,17 @@ export function applyClientScopeFilter(query: any, info: ClientKeywordsInfo): an
   }
 
   if (info.keywords.length > 0) {
-    const conditions = info.keywords.map((kw) => {
-      // Sanitizar caracteres especiales para la sintaxis de PostgREST
-      const safeKw = kw.replace(/["'(),]/g, '').trim();
-      return `nombre_consignatario.ilike.*${safeKw}*`;
-    });
-    return query.or(conditions.join(','));
+    const conditions = info.keywords
+      .map((kw) => kw.replace(/["'(),]/g, '').trim())
+      .filter((safeKw) => safeKw.length >= 2)
+      .map((safeKw) => `nombre_consignatario.ilike.*${safeKw}*`);
+    if (conditions.length > 0) {
+      return query.or(conditions.join(','));
+    }
+  }
+
+  if (!info.cleanEmail) {
+    return query.eq('usuario_email', '__invalid_empty_email__');
   }
 
   return query.eq('usuario_email', info.cleanEmail);

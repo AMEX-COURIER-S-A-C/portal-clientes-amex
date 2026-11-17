@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { cleanExactString } from '@/lib/portal/keywords';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,17 +43,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
+
     const { searchParams } = new URL(req.url);
-    const emailParam = searchParams.get('admin_email')?.trim().toLowerCase() || '';
     const daysParam = parseInt(searchParams.get('days') || '30', 10);
     const safeDays = isNaN(daysParam) || daysParam <= 0 ? 30 : Math.min(daysParam, 365);
-
-    // Solo superadmin puede acceder a estas analíticas
-    if (!isSuperadminEmail(emailParam)) {
-      return NextResponse.json({ error: 'Acceso no autorizado a analíticas ejecutivas' }, { status: 403 });
-    }
-
-    const portalAdmin = getPortalAdmin();
 
     // Si se solicita el historial específico de un cliente para la auditoría detallada
     const clientEmailParam = searchParams.get('client_email')?.trim().toLowerCase();
@@ -95,30 +92,49 @@ export async function GET(req: NextRequest) {
         event_type: eventType || 'ALL',
       });
     }
+
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - safeDays);
     const cutoffIso = cutoffDate.toISOString();
-
-    // "Hoy" se evalúa en hora de Perú, no en UTC.
     const limaHoy = limaDayKey(new Date());
 
-    // 1. Obtener todos los clientes registrados
-    const { data: clientsData } = await portalAdmin
-      .from('clientes_portal')
-      .select('id, email, nombre_completo, alias_palabras_clave, activo, creado_en')
-      .order('nombre_completo', { ascending: true });
+    // 1. Obtener todos los clientes registrados (paginado sin tope de 1,000)
+    const fetchAllClients = async () => {
+      const all: any[] = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data, error } = await portalAdmin
+          .from('clientes_portal')
+          .select('id, email, nombre_completo, alias_palabras_clave, activo, creado_en')
+          .order('nombre_completo', { ascending: true })
+          .range(from, from + step - 1);
 
-    // Excluir cuentas de administradores para mostrar estrictamente clientes reales
-    const clients = (clientsData || []).filter(c => !isSuperadminEmail(c.email));
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
+      return all;
+    };
 
-    // 2. Obtener usuarios de auth para su last_sign_in_at
-    const { data: authUsersRes } = await portalAdmin.auth.admin.listUsers({ perPage: 1000 });
-    const authMap = new Map<string, any>();
-    (authUsersRes?.users || []).forEach((u) => {
-      if (u.email) authMap.set(u.email.toLowerCase(), u);
-    });
+    // 2. Obtener todos los usuarios de auth con paginación completa más allá de 1,000
+    const fetchAllAuthUsers = async () => {
+      const allUsers: any[] = [];
+      let page = 1;
+      const perPage = 1000;
+      while (true) {
+        const { data, error } = await portalAdmin.auth.admin.listUsers({ page, perPage });
+        if (error || !data?.users || data.users.length === 0) break;
+        allUsers.push(...data.users);
+        if (data.users.length < perPage) break;
+        page++;
+      }
+      return allUsers;
+    };
 
-    // 3. Obtener catálogo completo de consignatarios (paginado para superar el límite de 1000 de Supabase)
+    // 3. Obtener catálogo completo de consignatarios (paginado)
     const fetchFullCatalog = async () => {
       const all: any[] = [];
       let from = 0;
@@ -136,21 +152,68 @@ export async function GET(req: NextRequest) {
       return all;
     };
 
-    const [catalogData, systemCountRes] = await Promise.all([
+    const [clientsData, authUsers, catalogData, systemCountRes] = await Promise.all([
+      fetchAllClients(),
+      fetchAllAuthUsers(),
       fetchFullCatalog(),
       portalAdmin
         .from('paquetes_portal')
         .select('id', { count: 'exact', head: true }),
     ]);
 
+    // Excluir cuentas de administradores para mostrar estrictamente clientes reales
+    const clients = (clientsData || []).filter((c) => !isSuperadminEmail(c.email));
+
+    const authMap = new Map<string, any>();
+    for (const u of authUsers) {
+      if (u.email) authMap.set(u.email.toLowerCase(), u);
+    }
+
     const totalPaquetesSistema = systemCountRes.count ?? 61261;
 
-    const catalogMap = new Map<string, any>();
-    (catalogData || []).forEach((c) => {
-      catalogMap.set((c.nombre || '').toUpperCase().trim(), c);
-    });
+    // Pre-indexar catálogo de consignatarios y pre-resolver keywords únicas una sola vez
+    // en lugar de ejecutar un triple bucle O(clientes * keywords * consignatarios).
+    const catalogEntries: Array<{ name: string; total: number }> = [];
+    const catalogMap = new Map<string, number>();
+    for (const c of catalogData || []) {
+      const name = cleanExactString(c.nombre);
+      const total = Number(c.total_paquetes || 0);
+      if (name) {
+        catalogEntries.push({ name, total });
+        catalogMap.set(name, total);
+      }
+    }
 
-    // 4. Eventos del período actual y del período anterior (paginado para superar el límite de 1000 de Supabase)
+    const clientKeywordsMap = new Map<string, string[]>();
+    const uniqueKeywords = new Set<string>();
+
+    for (const c of clients) {
+      const email = c.email.toLowerCase();
+      const kwList: string[] = [];
+      if (Array.isArray(c.alias_palabras_clave)) {
+        for (const k of c.alias_palabras_clave) {
+          const clean = cleanExactString(k);
+          if (clean && clean.length >= 2 && clean !== 'AMEX' && !kwList.includes(clean)) {
+            kwList.push(clean);
+            uniqueKeywords.add(clean);
+          }
+        }
+      }
+      clientKeywordsMap.set(email, kwList);
+    }
+
+    const keywordMatchedConsignees = new Map<string, string[]>();
+    for (const kw of uniqueKeywords) {
+      const matched: string[] = [];
+      for (const entry of catalogEntries) {
+        if (entry.name.includes(kw)) {
+          matched.push(entry.name);
+        }
+      }
+      keywordMatchedConsignees.set(kw, matched);
+    }
+
+    // 4. Eventos del período actual y del período anterior (paginado para superar el límite de 1,000)
     const previousCutoffIso = new Date(
       cutoffDate.getTime() - safeDays * DAY_MS
     ).toISOString();
@@ -207,12 +270,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: queryError?.message || 'Error al consultar eventos' }, { status: 500 });
     }
 
-    // Excluir eventos de administradores para que no contaminen KPIs, gráficas ni promedios
-    const events = (eventsData || []).filter(ev => !isSuperadminEmail(ev.usuario_email));
-
-    // 5. Agregados del período anterior (mismos criterios: sin administradores)
+    const events = (eventsData || []).filter((ev) => !isSuperadminEmail(ev.usuario_email));
     const previousEvents = (previousEventsData || []).filter(
-      ev => !isSuperadminEmail(ev.usuario_email)
+      (ev) => !isSuperadminEmail(ev.usuario_email)
     );
 
     const previousStats = {
@@ -252,33 +312,37 @@ export async function GET(req: NextRequest) {
     let totalCorreos = 0;
     const activosHoySet = new Set<string>();
     const activosPeriodoSet = new Set<string>();
-    const clientStatsMap = new Map<string, {
-      totalEventos: number;
-      logins: number;
-      busquedas: number;
-      fotos: number;
-      excels: number;
-      correos: number;
-      ultimoEvento: string | null;
-      ultimoLogin: string | null;
-      dispositivos: Record<string, number>;
-    }>();
+    const clientStatsMap = new Map<
+      string,
+      {
+        totalEventos: number;
+        logins: number;
+        busquedas: number;
+        fotos: number;
+        excels: number;
+        correos: number;
+        ultimoEvento: string | null;
+        ultimoLogin: string | null;
+        dispositivos: Record<string, number>;
+      }
+    >();
 
-    const dailyTrendMap = new Map<string, {
-      fecha: string;
-      dia: string;
-      total: number;
-      actividad: number;
-      logins: number;
-      busquedas: number;
-      fotos: number;
-      excels: number;
-      otros: number;
-      correos: number;
-    }>();
+    const dailyTrendMap = new Map<
+      string,
+      {
+        fecha: string;
+        dia: string;
+        total: number;
+        actividad: number;
+        logins: number;
+        busquedas: number;
+        fotos: number;
+        excels: number;
+        otros: number;
+        correos: number;
+      }
+    >();
 
-    // Series que se dibujan por separado en la barra; el resto de eventos del
-    // cliente (p. ej. filtros o consultas de detalle) se agrupa como "otros".
     const DAILY_CLIENT_SERIES = new Set([
       'LOGIN_EXITOSO',
       'BUSQUEDA_INVENTARIO',
@@ -288,7 +352,6 @@ export async function GET(req: NextRequest) {
 
     const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
 
-    // Inicializar días de la gráfica (para que los días sin eventos muestren 0 y la gráfica sea continua)
     for (let i = safeDays - 1; i >= 0; i--) {
       const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const dayKey = limaDayKey(d);
@@ -296,7 +359,18 @@ export async function GET(req: NextRequest) {
       const mIdx = parseInt(parts[1], 10) - 1;
       const dayNum = parseInt(parts[2], 10);
       const diaLabel = `${dayNum} ${MESES_CORTO[mIdx] || ''}`;
-      dailyTrendMap.set(dayKey, { fecha: dayKey, dia: diaLabel, total: 0, actividad: 0, logins: 0, busquedas: 0, fotos: 0, excels: 0, otros: 0, correos: 0 });
+      dailyTrendMap.set(dayKey, {
+        fecha: dayKey,
+        dia: diaLabel,
+        total: 0,
+        actividad: 0,
+        logins: 0,
+        busquedas: 0,
+        fotos: 0,
+        excels: 0,
+        otros: 0,
+        correos: 0,
+      });
     }
 
     const topSearchTermsMap = new Map<string, number>();
@@ -313,8 +387,6 @@ export async function GET(req: NextRequest) {
       const dayKey = limaDayKey(creadoEn);
       const esCliente = isClientEvent(tipo);
 
-      // Solo la actividad real del cliente cuenta como "activo".
-      // Los correos automáticos del VPS se contabilizan aparte.
       if (esCliente) {
         activosPeriodoSet.add(email);
         if (dayKey === limaHoy) {
@@ -350,7 +422,6 @@ export async function GET(req: NextRequest) {
         totalCorreos++;
       }
 
-      // Timestamps para la conversión correo -> login (atribución simple)
       const eventTime = new Date(creadoEn).getTime();
       if (!Number.isNaN(eventTime)) {
         if (tipo === 'EMAIL_ENVIADO') {
@@ -364,9 +435,6 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Agregado diario para la gráfica:
-      // - total: todos los eventos (actividad del cliente + correos automáticos)
-      // - actividad: solo lo que hizo el cliente (sin correos)
       if (dailyTrendMap.has(dayKey)) {
         const dStat = dailyTrendMap.get(dayKey)!;
         dStat.total++;
@@ -381,7 +449,6 @@ export async function GET(req: NextRequest) {
         else if (tipo === 'EMAIL_ENVIADO') dStat.correos++;
       }
 
-      // Agregado por cliente
       if (!clientStatsMap.has(email)) {
         clientStatsMap.set(email, {
           totalEventos: 0,
@@ -479,7 +546,6 @@ export async function GET(req: NextRequest) {
         dispositivos: {},
       };
 
-      // Dispositivo más frecuente
       let dispositivoFrecuente = 'Escritorio';
       let maxDispCount = 0;
       for (const [disp, count] of Object.entries(stat.dispositivos)) {
@@ -489,48 +555,35 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Calcular paquetes exactos: si es Superadmin ve el 100% del sistema (61,261)
       const esAdmin = isSuperadminEmail(c.email);
       let paquetesEstimados = 0;
 
       if (esAdmin) {
         paquetesEstimados = totalPaquetesSistema;
       } else {
-        const clientKeywords: string[] = [];
-        if (Array.isArray(c.alias_palabras_clave)) {
-          for (const k of c.alias_palabras_clave) {
-            const clean = (k || '').replace(/\s+/g, ' ').trim().toUpperCase();
-            if (clean && clean.length >= 2 && clean !== 'AMEX' && !clientKeywords.includes(clean)) {
-              clientKeywords.push(clean);
-            }
-          }
-        }
-
+        const clientKeywords = clientKeywordsMap.get(email) || [];
         if (clientKeywords.length > 0) {
           const matchedConsignatarios = new Set<string>();
           for (const kw of clientKeywords) {
-            for (const [catName] of catalogMap.entries()) {
-              if (catName.includes(kw)) {
-                matchedConsignatarios.add(catName);
-              }
+            const matchedList = keywordMatchedConsignees.get(kw) || [];
+            for (const name of matchedList) {
+              matchedConsignatarios.add(name);
             }
           }
           for (const name of matchedConsignatarios) {
-            paquetesEstimados += (catalogMap.get(name)?.total_paquetes || 0);
+            paquetesEstimados += catalogMap.get(name) || 0;
           }
         }
       }
 
-      // "Último login" es histórico (auth es la fuente autoritativa); "última
-      // actividad" se limita al período y excluye correos automáticos.
       const ultimoLogin = authUser?.last_sign_in_at || stat.ultimoLogin || null;
       const ultimaActividad = stat.ultimoEvento || null;
 
-      // Para el riesgo usamos la referencia más reciente entre login y actividad.
-      const referenciaActividad = [ultimoLogin, ultimaActividad]
-        .filter((value): value is string => Boolean(value))
-        .sort()
-        .pop() || null;
+      const referenciaActividad =
+        [ultimoLogin, ultimaActividad]
+          .filter((value): value is string => Boolean(value))
+          .sort()
+          .pop() || null;
       const referenciaMs = referenciaActividad ? new Date(referenciaActividad).getTime() : NaN;
       const diasSinActividad = Number.isNaN(referenciaMs)
         ? null
@@ -563,37 +616,37 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Ordenar clientes por nivel de actividad descendente
     clientesAnalitica.sort(
       (a, b) =>
         b.total_eventos - a.total_eventos ||
         (b.ultimo_login ? 1 : 0) - (a.ultimo_login ? 1 : 0)
     );
 
-    // Top búsquedas
     const topBusquedas = Array.from(topSearchTermsMap.entries())
       .map(([termino, cantidad]) => ({ termino, cantidad }))
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 8);
 
-    const clienteMasActivo = clientesAnalitica.length > 0 && clientesAnalitica[0].total_eventos > 0
-      ? clientesAnalitica[0].nombre_completo
-      : 'Sin interacciones aún';
+    const clienteMasActivo =
+      clientesAnalitica.length > 0 && clientesAnalitica[0].total_eventos > 0
+        ? clientesAnalitica[0].nombre_completo
+        : 'Sin interacciones aún';
 
     const totalCorreosEnviados = clientesAnalitica.reduce(
       (sum, c) => sum + (c.correos_enviados || 0),
       0
     );
 
-    const clientesActivados = clientesAnalitica.filter(c => !!c.ultimo_login).length;
+    const clientesActivados = clientesAnalitica.filter((c) => !!c.ultimo_login).length;
     const clientesNuncaIngresaron = clientesAnalitica.length - clientesActivados;
-    const clientesEnRiesgo = clientesAnalitica.filter(c => c.en_riesgo).length;
+    const clientesEnRiesgo = clientesAnalitica.filter((c) => c.en_riesgo).length;
     const clientesSoloCorreo = clientesAnalitica.filter(
-      c => c.correos_enviados > 0 && c.total_eventos === 0
+      (c) => c.correos_enviados > 0 && c.total_eventos === 0
     ).length;
-    const tasaActivacion = clientesAnalitica.length > 0
-      ? Math.round((clientesActivados / clientesAnalitica.length) * 1000) / 10
-      : 0;
+    const tasaActivacion =
+      clientesAnalitica.length > 0
+        ? Math.round((clientesActivados / clientesAnalitica.length) * 1000) / 10
+        : 0;
 
     return NextResponse.json({
       periodo_dias: safeDays,
@@ -627,6 +680,7 @@ export async function GET(req: NextRequest) {
       conversion_correos: {
         correos_analizados: totalCorreos,
         conversiones_24h: conversiones24h,
+        conversiones72h: conversiones72h,
         conversiones_72h: conversiones72h,
         tasa_24h: tasaConversion(conversiones24h),
         tasa_72h: tasaConversion(conversiones72h),

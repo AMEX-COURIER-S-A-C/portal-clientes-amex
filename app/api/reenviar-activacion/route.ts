@@ -1,23 +1,25 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
-import { getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
+import { generateClientAuthLink, getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireSuperadminSession(req);
+    if (!auth.ok) return auth.response;
+    const portalAdmin = auth.portalAdmin;
+
     const body = await req.json();
-    const { email, userId } = body;
+    const { email } = body;
 
     if (!email || !email.trim() || !email.includes('@')) {
       return NextResponse.json({ error: 'Ingresa un correo electrónico válido.' }, { status: 400 });
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const portalAdmin = getPortalAdmin();
     const baseUrl = getPortalBaseUrl(req);
     const redirectTo = `${baseUrl}/establecer-password`;
 
-    // 1. Obtener datos del cliente en clientes_portal
     const { data: profile } = await portalAdmin
       .from('clientes_portal')
       .select('nombre_completo, email, id')
@@ -26,53 +28,25 @@ export async function POST(req: Request) {
 
     const nombreCompleto = profile?.nombre_completo || 'Estimado(a) Cliente';
 
-    // 2. Generar nuevo enlace de activación/recuperación
-    let actionLink: string | null = null;
-
-    // Primero intentamos enlace de recuperación (para usuarios existentes)
-    const { data: recoveryData, error: recoveryErr } = await portalAdmin.auth.admin.generateLink({
-      type: 'recovery',
+    const linkRes = await generateClientAuthLink({
+      portalAdmin,
       email: cleanEmail,
-      options: {
-        redirectTo,
-      },
+      nombreCompleto,
+      primaryType: 'recovery',
+      redirectTo,
     });
 
-    if (!recoveryErr && recoveryData?.properties?.action_link) {
-      actionLink = recoveryData.properties.action_link;
-    } else {
-      // Si no existe en auth, intentamos invitarlo
-      const { data: inviteData, error: inviteErr } = await portalAdmin.auth.admin.generateLink({
-        type: 'invite',
-        email: cleanEmail,
-        options: {
-          redirectTo,
-          data: {
-            nombre_completo: nombreCompleto,
-            rol: 'cliente',
-            password_establecido: false,
-          },
-        },
-      });
-
-      if (inviteErr) {
-        return NextResponse.json(
-          { error: `No se pudo generar el enlace: ${inviteErr.message}` },
-          { status: 500 }
-        );
-      }
-      actionLink = inviteData?.properties?.action_link || null;
+    if (!linkRes.actionLink) {
+      return NextResponse.json(
+        { error: `No se pudo generar el enlace: ${linkRes.error || 'Error desconocido'}` },
+        { status: 500 }
+      );
     }
 
-    if (!actionLink) {
-      return NextResponse.json({ error: 'No se pudo generar el enlace de activación.' }, { status: 500 });
-    }
-
-    // 3. Enviar correo vía Resend
     const emailRes = await sendWelcomeClientEmail({
       email: cleanEmail,
       nombreCompleto,
-      activationLink: toBrandedAuthLink(actionLink),
+      activationLink: toBrandedAuthLink(linkRes.actionLink, req),
     });
 
     if (!emailRes.success) {

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
+import { requireAuthSession } from '@/lib/supabase/auth-guard';
+import { applyClientScopeFilter, getClientKeywords } from '@/lib/portal/clientFilter';
 
 export async function GET(req: NextRequest) {
   try {
-    const code = req.nextUrl.searchParams.get('code')?.trim().toUpperCase();
+    const auth = await requireAuthSession(req);
+    if (!auth.ok) return auth.response;
+    const { email, portalAdmin } = auth;
+
+    const rawCode = req.nextUrl.searchParams.get('code')?.trim().toUpperCase() || '';
+    const code = rawCode.replace(/["'(),*%]/g, '').trim();
 
     if (!code || code.length < 3) {
       return NextResponse.json(
@@ -12,9 +18,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const portalAdmin = getPortalAdmin();
+    const clientInfo = await getClientKeywords(portalAdmin, email);
 
-    const { data, error } = await portalAdmin
+    let pkgQuery = portalAdmin
       .from('paquetes_portal')
       .select(`
         id,
@@ -30,7 +36,11 @@ export async function GET(req: NextRequest) {
         ubicacion_almacen,
         creado_en,
         actualizado_en
-      `)
+      `);
+
+    pkgQuery = applyClientScopeFilter(pkgQuery, clientInfo);
+
+    const { data, error } = await pkgQuery
       .or(`numero_recibo_bodega.ilike.%${code}%,tracking.ilike.%${code}%`)
       .order('creado_en', { ascending: false })
       .limit(1)

@@ -1,8 +1,13 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getTibApiCredentials, normalizeTibWr, TIB_MEDIA_BASE_URL } from '@/lib/tib/apiClient';
+import {
+  buildValidMatchingTerms,
+  cleanExactString,
+  sanitizePostgrestFilterTerm,
+} from '@/lib/portal/keywords';
 
-export { ADMIN_MASTER_EMAIL };
+export { ADMIN_MASTER_EMAIL, cleanExactString };
 
 export interface RawTibItem {
   seqwr?: string;
@@ -27,13 +32,6 @@ export interface RawTibItem {
   _fetchedStatus?: string;
 }
 
-export function cleanExactString(str: unknown): string {
-  return String(str || '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, ' ');
-}
-
 export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: string | null): string {
   const normTib = (estadoTib || '').toUpperCase();
   if (normTib === 'ENTREGADO' || estadoAmex === 'entregado') return 'ENTREGADO';
@@ -44,12 +42,6 @@ export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: s
 
 /**
  * Motor de Sincronización en Vivo (Delta de RECIBIDO) + Re-vinculación Ultrarrápida en Supabase.
- *
- * - Cuando se invoca de forma global (botón "Sincronizar con API TIB"), descarga en vivo los paquetes
- *   en estado RECIBIDO desde la API de TIB (~1s) y actualiza inmediatamente cualquier paquete nuevo
- *   o cuyos datos (nombre_consignatario, tracking, peso, empaque, foto o ticket) hayan sido corregidos en TIB.
- * - Ejecuta el cruce inteligente (matching) de clientes y palabras clave directamente sobre `paquetes_portal`.
- * - Actualiza las estadísticas del catálogo `amex_portal_clientes` para los consignatarios modificados.
  */
 export async function syncTibPackagesToPortal(options?: { specificEmail?: string }) {
   const portalAdmin = getPortalAdmin();
@@ -63,24 +55,33 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     .limit(1);
   const hasUsuarioIdColumn = !colCheckErr;
 
-  // 2. Consultar todos los perfiles activos en clientes_portal
-  const { data: allClients, error: cErr } = await portalAdmin
-    .from('clientes_portal')
-    .select('id, email, nombre_completo, alias_palabras_clave')
-    .eq('activo', true);
+  // 2. Consultar todos los perfiles activos en clientes_portal (paginado sin tope de 1,000)
+  const clientesList: any[] = [];
+  let clientOffset = 0;
+  const PAGE_SIZE = 1000;
+  while (true) {
+    const { data: pageClients, error: cErr } = await portalAdmin
+      .from('clientes_portal')
+      .select('id, email, nombre_completo, alias_palabras_clave')
+      .eq('activo', true)
+      .range(clientOffset, clientOffset + PAGE_SIZE - 1);
 
-  if (cErr) {
-    console.error('[syncTibPackagesToPortal] Error al consultar clientes_portal:', cErr);
-    throw new Error('Error al consultar directorio de clientes');
+    if (cErr) {
+      console.error('[syncTibPackagesToPortal] Error al consultar clientes_portal:', cErr);
+      throw new Error('Error al consultar directorio de clientes');
+    }
+    if (!pageClients || pageClients.length === 0) break;
+    clientesList.push(...pageClients);
+    if (pageClients.length < PAGE_SIZE) break;
+    clientOffset += PAGE_SIZE;
   }
 
-  const clientesList = allClients || [];
   const superadminProfile = clientesList.find(
     (c) => c.email?.trim().toLowerCase() === ADMIN_MASTER_EMAIL
   );
   const superadminId = superadminProfile?.id || null;
 
-  // 2.B. Sincronización en vivo de paquetes RECIBIDO desde TIB API (detecta nuevos WRs y correcciones de nombre/peso/foto)
+  // 2.B. Sincronización en vivo de paquetes RECIBIDO desde TIB API (solo en sincronización global)
   let updatedFromTibCount = 0;
   if (!isSpecificRegularClient) {
     try {
@@ -93,6 +94,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
           password: creds.password,
           status: 'RECIBIDO',
         }),
+        signal: AbortSignal.timeout(30000),
       });
 
       if (tibRes.ok) {
@@ -111,7 +113,6 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
           const wrList = Array.from(tibMap.keys());
           const existingMap = new Map<string, any>();
 
-          // Consultar en lotes los WRs existentes en paquetes_portal para detectar ediciones de metadatos
           const CHUNK = 500;
           for (let i = 0; i < wrList.length; i += CHUNK) {
             const slice = wrList.slice(i, i + CHUNK);
@@ -192,45 +193,26 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
           }
 
           if (deltaRecordsToUpsert.length > 0) {
-            await portalAdmin
-              .from('paquetes_portal')
-              .upsert(deltaRecordsToUpsert, { onConflict: 'numero_recibo_bodega' });
+            for (let i = 0; i < deltaRecordsToUpsert.length; i += CHUNK) {
+              const slice = deltaRecordsToUpsert.slice(i, i + CHUNK);
+              await portalAdmin
+                .from('paquetes_portal')
+                .upsert(slice, { onConflict: 'numero_recibo_bodega' });
+            }
             updatedFromTibCount = deltaRecordsToUpsert.length;
 
-            // Recalcular conteos en amex_portal_clientes para los consignatarios modificados
-            for (const cName of affectedConsignees) {
-              if (!cName) continue;
-              const { data: cPkgs } = await portalAdmin
-                .from('paquetes_portal')
-                .select('numero_recibo_bodega, tracking, estado_tib, creado_en')
-                .eq('nombre_consignatario', cName)
-                .order('creado_en', { ascending: false });
-
-              if (cPkgs && cPkgs.length > 0) {
-                let recCount = 0;
-                let envCount = 0;
-                let entCount = 0;
-                for (const p of cPkgs) {
-                  const st = (p.estado_tib || '').toUpperCase();
-                  if (st === 'RECIBIDO') recCount++;
-                  else if (st === 'ENVIADO') envCount++;
-                  else if (st === 'ENTREGADO') entCount++;
-                }
-                await portalAdmin.from('amex_portal_clientes').upsert(
-                  {
-                    nombre: cName,
-                    total_paquetes: cPkgs.length,
-                    recibidos: recCount,
-                    enviados: envCount,
-                    entregados: entCount,
-                    ultimo_wr: cPkgs[0].numero_recibo_bodega,
-                    ultimo_tracking: cPkgs[0].tracking || null,
-                    ultima_fecha: cPkgs[0].creado_en,
-                    actualizado_en: new Date().toISOString(),
-                  },
-                  { onConflict: 'nombre' }
-                );
-              }
+            // El trigger de base de datos (002 / 006) mantiene amex_portal_clientes sincronizado;
+            // si existe la función RPC, se invoca de forma ligera como respaldo sin descargar filas a Node.js.
+            if (typeof (portalAdmin as any).rpc === 'function') {
+              await Promise.all(
+                Array.from(affectedConsignees)
+                  .filter(Boolean)
+                  .map((cName) =>
+                    Promise.resolve(
+                      portalAdmin.rpc('recalcular_consignatario_catalogo', { target_nombre: cName })
+                    ).catch(() => null)
+                  )
+              );
             }
           }
         }
@@ -249,38 +231,37 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   });
 
   // 4. Ejecutar cruce diferencial en PostgreSQL por cada cliente regular y sus palabras clave
-  //    Solo actualiza filas cuyo propietario o usuario_id realmente haya cambiado (0 escrituras innecesarias).
+  //    Combinando los términos por cliente en una sola condición .or() para minimizar viajes HTTP.
   for (const client of regularClientsToProcess) {
     const targetEmail = client.email.trim().toLowerCase();
-    const searchTerms = new Set<string>();
-
-    const cleanNombre = cleanExactString(client.nombre_completo);
-    if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX') {
-      searchTerms.add(cleanNombre);
-    }
-
-    if (Array.isArray(client.alias_palabras_clave)) {
-      for (const alias of client.alias_palabras_clave) {
-        const cleanAlias = cleanExactString(alias);
-        if (cleanAlias && cleanAlias.length >= 2 && cleanAlias !== 'AMEX') {
-          searchTerms.add(cleanAlias);
-        }
-      }
-    }
-
-    const termsArray = Array.from(searchTerms);
+    const termsArray = buildValidMatchingTerms(
+      client.nombre_completo,
+      client.alias_palabras_clave,
+      isSpecificRegularClient
+    );
 
     // Si se editó un cliente específico, liberar únicamente los paquetes que ya no coincidan con sus alias actuales
     if (isSpecificRegularClient) {
-      const { data: currentClientPkgs } = await portalAdmin
-        .from('paquetes_portal')
-        .select('id, nombre_consignatario')
-        .eq('usuario_email', targetEmail);
+      const currentClientPkgs: any[] = [];
+      let pkgFrom = 0;
+      while (true) {
+        const { data: pagePkgs } = await portalAdmin
+          .from('paquetes_portal')
+          .select('id, nombre_consignatario')
+          .eq('usuario_email', targetEmail)
+          .range(pkgFrom, pkgFrom + PAGE_SIZE - 1);
 
-      const idsToRelease = (currentClientPkgs || [])
+        if (!pagePkgs || pagePkgs.length === 0) break;
+        currentClientPkgs.push(...pagePkgs);
+        if (pagePkgs.length < PAGE_SIZE) break;
+        pkgFrom += PAGE_SIZE;
+      }
+
+      const idsToRelease = currentClientPkgs
         .filter((pkg) => {
           const cName = cleanExactString(pkg.nombre_consignatario);
-          return !termsArray.some((t) => cName.includes(t));
+          const compactName = cName.replace(/\s+/g, '');
+          return !termsArray.some((t) => cName.includes(t) || (t.length >= 5 && compactName.includes(t)));
         })
         .map((pkg) => pkg.id);
 
@@ -292,12 +273,17 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
         if (hasUsuarioIdColumn) {
           resetPayload.usuario_id = superadminId;
         }
-        await portalAdmin
-          .from('paquetes_portal')
-          .update(resetPayload)
-          .in('id', idsToRelease);
+        for (let i = 0; i < idsToRelease.length; i += 500) {
+          const idChunk = idsToRelease.slice(i, i + 500);
+          await portalAdmin
+            .from('paquetes_portal')
+            .update(resetPayload)
+            .in('id', idChunk);
+        }
       }
     }
+
+    if (termsArray.length === 0) continue;
 
     const updatePayload: Record<string, any> = {
       usuario_email: targetEmail,
@@ -307,22 +293,42 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       updatePayload.usuario_id = client.id;
     }
 
-    const diffFilter = hasUsuarioIdColumn
-      ? `usuario_email.neq.${targetEmail},usuario_id.is.null`
-      : `usuario_email.neq.${targetEmail}`;
+    const safeTerms = termsArray
+      .map((term) => sanitizePostgrestFilterTerm(term))
+      .filter((term) => term.length >= 2);
 
-    await Promise.all(
-      termsArray.map((term) =>
-        portalAdmin
+    if (safeTerms.length === 1) {
+      const diffFilter = hasUsuarioIdColumn
+        ? `usuario_email.neq.${targetEmail},usuario_id.is.null`
+        : `usuario_email.neq.${targetEmail}`;
+
+      await portalAdmin
+        .from('paquetes_portal')
+        .update(updatePayload)
+        .ilike('nombre_consignatario', `%${safeTerms[0]}%`)
+        .or(diffFilter);
+    } else if (safeTerms.length > 1) {
+      const consigneeOrFilter = safeTerms
+        .map((term) => `nombre_consignatario.ilike.*${term}*`)
+        .join(',');
+
+      await portalAdmin
+        .from('paquetes_portal')
+        .update(updatePayload)
+        .or(consigneeOrFilter)
+        .neq('usuario_email', targetEmail);
+
+      if (hasUsuarioIdColumn && client.id) {
+        await portalAdmin
           .from('paquetes_portal')
-          .update(updatePayload)
-          .ilike('nombre_consignatario', `%${term}%`)
-          .or(diffFilter)
-      )
-    );
+          .update({ usuario_id: client.id })
+          .eq('usuario_email', targetEmail)
+          .is('usuario_id', null);
+      }
+    }
   }
 
-  // 6. Asegurar que los paquetes del Superadmin tengan su usuario_id vinculado si la columna existe
+  // 5. Asegurar que los paquetes del Superadmin tengan su usuario_id vinculado si la columna existe
   if (!isSpecificRegularClient && hasUsuarioIdColumn && superadminId) {
     await portalAdmin
       .from('paquetes_portal')
@@ -331,7 +337,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       .is('usuario_id', null);
   }
 
-  // 7. Obtener conteos finales exactos
+  // 6. Obtener conteos finales exactos
   const { count: totalTibCount } = await portalAdmin
     .from('paquetes_portal')
     .select('*', { count: 'exact', head: true });

@@ -49,3 +49,108 @@ export function toBrandedAuthLink(rawActionLink: string, req?: Request): string 
     return rawActionLink;
   }
 }
+
+export interface GenerateAuthLinkOptions {
+  portalAdmin: any;
+  email: string;
+  nombreCompleto: string;
+  primaryType: 'invite' | 'recovery';
+  redirectTo: string;
+  inviteData?: Record<string, any>;
+}
+
+/**
+ * Genera un enlace de activación o recuperación en Supabase Auth con fallback automático
+ * entre 'invite' y 'recovery' (o viceversa).
+ */
+export async function generateClientAuthLink({
+  portalAdmin,
+  email,
+  nombreCompleto,
+  primaryType,
+  redirectTo,
+  inviteData,
+}: GenerateAuthLinkOptions): Promise<{ actionLink: string | null; userId: string | null; error: string | null }> {
+  const defaultInviteData = inviteData || {
+    nombre_completo: nombreCompleto,
+    rol: 'cliente',
+    password_establecido: false,
+  };
+
+  if (primaryType === 'invite') {
+    const { data: inviteRes, error: inviteErr } = await portalAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: {
+        redirectTo,
+        data: defaultInviteData,
+      },
+    });
+
+    if (!inviteErr && inviteRes?.properties?.action_link) {
+      return {
+        actionLink: inviteRes.properties.action_link,
+        userId: inviteRes.user?.id || null,
+        error: null,
+      };
+    }
+
+    const { data: recoveryRes, error: recoveryErr } = await portalAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email,
+      options: { redirectTo },
+    });
+
+    if (!recoveryErr && recoveryRes?.properties?.action_link) {
+      return {
+        actionLink: recoveryRes.properties.action_link,
+        userId: recoveryRes.user?.id || null,
+        error: null,
+      };
+    }
+
+    return {
+      actionLink: null,
+      userId: recoveryRes?.user?.id || null,
+      error: recoveryErr?.message || inviteErr?.message || 'No se pudo generar el enlace.',
+    };
+  }
+
+  // primaryType === 'recovery'
+  const { data: recoveryRes, error: recoveryErr } = await portalAdmin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: { redirectTo },
+  });
+
+  if (!recoveryErr && recoveryRes?.properties?.action_link) {
+    return {
+      actionLink: recoveryRes.properties.action_link,
+      userId: recoveryRes.user?.id || null,
+      error: null,
+    };
+  }
+
+  const { data: inviteRes, error: inviteErr } = await portalAdmin.auth.admin.generateLink({
+    type: 'invite',
+    email,
+    options: {
+      redirectTo,
+      data: defaultInviteData,
+    },
+  });
+
+  if (!inviteErr && inviteRes?.properties?.action_link) {
+    return {
+      actionLink: inviteRes.properties.action_link,
+      userId: inviteRes.user?.id || null,
+      error: null,
+    };
+  }
+
+  return {
+    actionLink: null,
+    userId: inviteRes?.user?.id || null,
+    error: inviteErr?.message || recoveryErr?.message || 'No se pudo generar el enlace.',
+  };
+}

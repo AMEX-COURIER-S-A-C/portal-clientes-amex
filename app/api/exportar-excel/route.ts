@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { requireAuthSession } from '@/lib/supabase/auth-guard';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
+import { applyPackageQueryFilters } from '@/lib/portal/packageFilters';
 import writeXlsxFile from 'write-excel-file/node';
 
 export const dynamic = 'force-dynamic';
@@ -27,15 +27,13 @@ function formatFecha(isoString?: string | null): string {
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuthSession(req);
+    if (!auth.ok) return auth.response;
+    const { email: cleanEmail, portalAdmin } = auth;
+
     const body = await req.json().catch(() => ({}));
-    const { email, scope = 'filtered', filters = {} } = body;
+    const { scope = 'filtered', filters = {} } = body;
 
-    if (!email) {
-      return NextResponse.json({ error: 'Usuario no autenticado' }, { status: 401 });
-    }
-
-    const cleanEmail = String(email).trim().toLowerCase();
-    const portalAdmin = getPortalAdmin();
     const clientInfo = await getClientKeywords(portalAdmin, cleanEmail);
 
     // Función constructora de consulta base para paginar de a 1,000 registros
@@ -54,58 +52,18 @@ export async function POST(req: Request) {
           actualizado_en
         `);
 
-      // Control de roles dinámico y multi-cuenta por palabras clave
-      q = applyClientScopeFilter(q, clientInfo);
-
-      // Aplicar lógica según el alcance (scope)
       if (scope === 'filtered') {
-        const { wr, tracking, consignatario, tipo, estado, fechaTipo, fechaDesde, fechaHasta, pesoMin, pesoMax } = filters;
-        if (wr && typeof wr === 'string' && wr.trim()) {
-          q = q.ilike('numero_recibo_bodega', `%${wr.trim()}%`);
+        q = applyPackageQueryFilters(q, clientInfo, filters);
+      } else {
+        q = applyClientScopeFilter(q, clientInfo);
+        if (scope === 'recibido_miami') {
+          q = q.eq('estado_tib', 'RECIBIDO');
+        } else if (scope === 'en_transito') {
+          q = q.eq('estado_tib', 'ENVIADO');
+        } else if (scope === 'entregado') {
+          q = q.eq('estado_tib', 'ENTREGADO');
         }
-        if (tracking && typeof tracking === 'string' && tracking.trim()) {
-          q = q.ilike('tracking', `%${tracking.trim()}%`);
-        }
-        if (consignatario && typeof consignatario === 'string' && consignatario.trim()) {
-          q = q.eq('nombre_consignatario', consignatario.trim());
-        }
-        if (tipo && typeof tipo === 'string' && tipo.trim()) {
-          q = q.eq('tipo_empaque', tipo.trim());
-        }
-        if (estado && typeof estado === 'string' && estado.trim()) {
-          q = q.eq('estado_tib', estado.trim().toUpperCase());
-        }
-        const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
-        if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
-          try {
-            const d = new Date(`${fechaDesde.trim()}T00:00:00`);
-            if (!isNaN(d.getTime())) {
-              q = q.gte(colFecha, d.toISOString());
-            }
-          } catch (_) {}
-        }
-        if (fechaHasta && typeof fechaHasta === 'string' && fechaHasta.trim()) {
-          try {
-            const d = new Date(`${fechaHasta.trim()}T23:59:59.999`);
-            if (!isNaN(d.getTime())) {
-              q = q.lte(colFecha, d.toISOString());
-            }
-          } catch (_) {}
-        }
-        if (pesoMin !== undefined && pesoMin !== '' && !isNaN(Number(pesoMin))) {
-          q = q.gte('peso_kg', Number(pesoMin));
-        }
-        if (pesoMax !== undefined && pesoMax !== '' && !isNaN(Number(pesoMax))) {
-          q = q.lte('peso_kg', Number(pesoMax));
-        }
-      } else if (scope === 'recibido_miami') {
-        q = q.eq('estado_tib', 'RECIBIDO');
-      } else if (scope === 'en_transito') {
-        q = q.eq('estado_tib', 'ENVIADO');
-      } else if (scope === 'entregado') {
-        q = q.eq('estado_tib', 'ENTREGADO');
       }
-      // scope === 'all' no aplica filtros adicionales
 
       return q.order('creado_en', { ascending: false });
     };
@@ -137,7 +95,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Definición de columnas con formato profesional para write-excel-file
     const columns = [
       {
         header: { value: 'N°', fontWeight: 'bold' as const, align: 'center' as const },

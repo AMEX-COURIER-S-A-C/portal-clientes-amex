@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import { authFetch } from '@/lib/portal/authFetch';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import {
   ArrowLeft,
@@ -60,7 +61,7 @@ export default function ConfigurarClientePage() {
     setIsResending(true);
     setResendMsg(null);
     try {
-      const res = await fetch('/api/restablecer-password', {
+      const res = await authFetch('/api/restablecer-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -101,7 +102,7 @@ export default function ConfigurarClientePage() {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
+        const res = await authFetch(
           `/api/listado-amex?search=${encodeURIComponent(tibQuery.trim())}&limit=40`
         );
         const data = await res.json();
@@ -147,7 +148,7 @@ export default function ConfigurarClientePage() {
     setIsLoadingClient(true);
     setErrorMessage(null);
     try {
-      const res = await fetch(`/api/actualizar-usuario?id=${encodeURIComponent(clientId)}`);
+      const res = await authFetch(`/api/actualizar-usuario?id=${encodeURIComponent(clientId)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo cargar la información del cliente');
 
@@ -182,7 +183,7 @@ export default function ConfigurarClientePage() {
     setIsSearchingTib(true);
     setIsTibDropdownOpen(true);
     try {
-      const res = await fetch(`/api/listado-amex?search=${encodeURIComponent(trimmed)}&limit=50`);
+      const res = await authFetch(`/api/listado-amex?search=${encodeURIComponent(trimmed)}&limit=50`);
       const data = await res.json();
       setTibResults(data.clientes || []);
     } catch (err) {
@@ -217,7 +218,7 @@ export default function ConfigurarClientePage() {
     setSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/actualizar-usuario', {
+      const res = await authFetch('/api/actualizar-usuario', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

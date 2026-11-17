@@ -1,27 +1,24 @@
 import { NextResponse } from 'next/server';
-import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { requireAuthSession } from '@/lib/supabase/auth-guard';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
+import { applyPackageQueryFilters } from '@/lib/portal/packageFilters';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuthSession(req);
+    if (!auth.ok) return auth.response;
+    const { email: cleanEmail, portalAdmin } = auth;
+
     const body = await req.json().catch(() => ({}));
     const {
-      email,
       page = 1,
       itemsPerPage = 50,
       filters = {},
       onlySystemCount = false,
     } = body;
 
-    if (!email || typeof email !== 'string') {
-      return NextResponse.json({ error: 'Usuario no autenticado' }, { status: 401 });
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-    const portalAdmin = getPortalAdmin();
     const clientInfo = await getClientKeywords(portalAdmin, cleanEmail);
 
     // Si solo se solicita el conteo total del sistema/cliente (sin filtros)
@@ -41,70 +38,13 @@ export async function POST(req: Request) {
       });
     }
 
-    const {
-      wr = '',
-      tracking = '',
-      consignatario = '',
-      tipo = '',
-      estado = '',
-      fechaTipo = 'creado_en',
-      fechaDesde = '',
-      fechaHasta = '',
-      pesoMin = '',
-      pesoMax = '',
-    } = filters;
-
-    const applyFilters = (q: any) => {
-      q = applyClientScopeFilter(q, clientInfo);
-
-      if (wr && typeof wr === 'string' && wr.trim()) {
-        q = q.ilike('numero_recibo_bodega', `%${wr.trim()}%`);
-      }
-      if (tracking && typeof tracking === 'string' && tracking.trim()) {
-        q = q.ilike('tracking', `%${tracking.trim()}%`);
-      }
-      if (consignatario && typeof consignatario === 'string' && consignatario.trim()) {
-        q = q.eq('nombre_consignatario', consignatario.trim());
-      }
-      if (tipo && typeof tipo === 'string' && tipo.trim()) {
-        q = q.eq('tipo_empaque', tipo.trim());
-      }
-      if (estado && typeof estado === 'string' && estado.trim()) {
-        q = q.eq('estado_tib', estado.trim().toUpperCase());
-      }
-      const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
-      if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
-        try {
-          const d = new Date(`${fechaDesde.trim()}T00:00:00`);
-          if (!isNaN(d.getTime())) {
-            q = q.gte(colFecha, d.toISOString());
-          }
-        } catch (_) {}
-      }
-      if (fechaHasta && typeof fechaHasta === 'string' && fechaHasta.trim()) {
-        try {
-          const d = new Date(`${fechaHasta.trim()}T23:59:59.999`);
-          if (!isNaN(d.getTime())) {
-            q = q.lte(colFecha, d.toISOString());
-          }
-        } catch (_) {}
-      }
-      if (pesoMin !== undefined && String(pesoMin).trim() !== '' && !isNaN(Number(pesoMin))) {
-        q = q.gte('peso_kg', Number(pesoMin));
-      }
-      if (pesoMax !== undefined && String(pesoMax).trim() !== '' && !isNaN(Number(pesoMax))) {
-        q = q.lte('peso_kg', Number(pesoMax));
-      }
-      return q;
-    };
-
     const safePage = Math.max(1, Number(page) || 1);
     const safePerPage = Math.min(500, Math.max(1, Number(itemsPerPage) || 50));
     const from = (safePage - 1) * safePerPage;
     const to = from + safePerPage - 1;
 
     // Ejecutar consulta de filas (Index Scan con LIMIT) y conteo en paralelo sin bloquear el planificador
-    const dataQuery = applyFilters(
+    const dataQuery = applyPackageQueryFilters(
       portalAdmin.from('paquetes_portal').select(`
         id,
         numero_recibo_bodega,
@@ -118,13 +58,17 @@ export async function POST(req: Request) {
         tib_ticket_pdf_url,
         creado_en,
         actualizado_en
-      `)
+      `),
+      clientInfo,
+      filters
     )
       .order('creado_en', { ascending: false })
       .range(from, to);
 
-    const countQuery = applyFilters(
-      portalAdmin.from('paquetes_portal').select('id', { count: 'exact', head: true })
+    const countQuery = applyPackageQueryFilters(
+      portalAdmin.from('paquetes_portal').select('id', { count: 'exact', head: true }),
+      clientInfo,
+      filters
     );
 
     const [dataRes, countRes] = await Promise.all([dataQuery, countQuery]);
