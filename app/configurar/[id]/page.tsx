@@ -244,7 +244,7 @@ export default function ConfigurarClientePage() {
 
   if (isLoadingAuth || isLoadingClient) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'Inter, system-ui, sans-serif' }}>
         <div style={{ width: '32px', height: '32px', border: '3px solid #0284c7', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
         <p style={{ fontSize: '14px', fontWeight: 600, color: '#475569' }}>Cargando configuración del cliente...</p>
       </div>
@@ -252,7 +252,7 @@ export default function ConfigurarClientePage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+    <div style={{ minHeight: '100dvh', backgroundColor: '#f1f5f9', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom)', fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
       
       {/* 1. Header Superior */}
       <header style={{ backgroundColor: '#111827', borderBottom: '1px solid #1f2937', color: '#ffffff', padding: '10px 16px', minHeight: '62px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', position: 'sticky', top: 0, zIndex: 40 }}>

@@ -398,8 +398,13 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     const link = document.createElement('a');
     link.href = url;
     link.download = `AMEX_Analiticas_Uso_${days}dias_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 2500);
   };
 
   // Cálculo para el gráfico de barras nativo y escala del eje Y
@@ -739,7 +744,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       )}
 
       {/* 2. Tarjetas Ejecutivas de KPIs (5 Indicadores Clave) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '14px' }}>
         
         {/* KPI 1: Usuarios Activos Hoy */}
         <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
@@ -877,7 +882,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: '14px' }}>
 
           {/* Tasa de activación */}
           <div style={{ ...kpiCardStyle, borderLeft: '3px solid #10b981' }}>
@@ -966,7 +971,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
         </div>
 
         {conversion && conversion.correos_analizados > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: '14px' }}>
 
             {[
               {
@@ -1329,7 +1334,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '14px' }}>
           {renderDistributionCard(
             'Dispositivos',
             'Participación sobre eventos de cliente',
@@ -1415,7 +1420,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '14px' }}>
 
           {/* Clientes a recuperar */}
           <div style={{ ...kpiCardStyle, padding: '18px 20px' }}>
@@ -1939,7 +1944,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               borderRadius: '14px',
               maxWidth: '720px',
               width: '100%',
-              maxHeight: '90vh',
+              maxHeight: '90dvh',
               display: 'flex',
               flexDirection: 'column',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
@@ -1948,15 +1953,15 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             onClick={e => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f8fafc' }}>
-              <div>
+            <div style={{ padding: '16px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', backgroundColor: '#f8fafc' }}>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Activity style={{ width: '18px', height: '18px', color: '#ff5722' }} />
+                  <Activity style={{ width: '18px', height: '18px', color: '#ff5722', flexShrink: 0 }} />
                   <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
                     Historial de Actividad y Auditoría
                   </h3>
                 </div>
-                <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748b' }}>
+                <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748b', wordBreak: 'break-word' }}>
                   <strong>{selectedClientForAudit.nombre_completo}</strong> ({selectedClientForAudit.email})
                 </p>
               </div>
@@ -1964,9 +1969,11 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               <button
                 type="button"
                 onClick={() => setSelectedClientForAudit(null)}
+                aria-label="Cerrar historial"
                 style={{
-                  width: '32px',
-                  height: '32px',
+                  width: '40px',
+                  height: '40px',
+                  flexShrink: 0,
                   borderRadius: '50%',
                   border: '1px solid #cbd5e1',
                   backgroundColor: '#ffffff',
@@ -1982,13 +1989,13 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             </div>
 
             {/* Filtros del historial */}
-            <div style={{ padding: '12px 22px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 160px', minWidth: 0 }}>
                 <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Tipo de evento</label>
                 <select
                   value={auditEventType}
                   onChange={e => setAuditEventType(e.target.value)}
-                  style={{ padding: '6px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', backgroundColor: '#ffffff', cursor: 'pointer' }}
+                  style={{ width: '100%', minHeight: '38px', padding: '6px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', backgroundColor: '#ffffff', cursor: 'pointer' }}
                 >
                   <option value="ALL">Todos los eventos</option>
                   <option value="LOGIN_EXITOSO">Inicios de sesión</option>
@@ -2001,25 +2008,25 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 </select>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 135px', minWidth: 0 }}>
                 <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Desde</label>
                 <input
                   type="date"
                   value={auditFrom}
                   max={auditTo || undefined}
                   onChange={e => setAuditFrom(e.target.value)}
-                  style={{ padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a' }}
+                  style={{ width: '100%', minWidth: 0, minHeight: '38px', padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', backgroundColor: '#ffffff' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: '1 1 135px', minWidth: 0 }}>
                 <label style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Hasta</label>
                 <input
                   type="date"
                   value={auditTo}
                   min={auditFrom || undefined}
                   onChange={e => setAuditTo(e.target.value)}
-                  style={{ padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a' }}
+                  style={{ width: '100%', minWidth: 0, minHeight: '38px', padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', backgroundColor: '#ffffff' }}
                 />
               </div>
 
@@ -2029,8 +2036,10 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: '5px',
-                  padding: '7px 12px',
+                  minHeight: '38px',
+                  padding: '7px 14px',
                   backgroundColor: '#0f172a',
                   color: '#ffffff',
                   border: 'none',

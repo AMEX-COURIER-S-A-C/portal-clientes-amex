@@ -9,11 +9,17 @@ export const metadata: Metadata = {
     shortcut: "/logo-amex.jpg",
     apple: "/logo-amex.jpg",
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "AMEX Courier",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#0f172a",
 };
 

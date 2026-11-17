@@ -253,7 +253,7 @@ function ClienteRegistroForm() {
 
 export default function ClienteRegistroPage() {
   return (
-    <div className="amex-client-portal min-h-screen bg-[#070b14] text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-white" data-portal="client" data-lenis-prevent>
+    <div className="amex-client-portal min-h-dvh bg-[#070b14] text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-white" data-portal="client" data-lenis-prevent>
       {/* Background Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-[120px]" />
@@ -261,9 +261,9 @@ export default function ClienteRegistroPage() {
       </div>
 
       {/* Header */}
-      <header className="relative z-10 border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="relative z-10 border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md px-4 sm:px-6 py-4">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-amber-500/20">
               A
             </div>
@@ -292,7 +292,7 @@ export default function ClienteRegistroPage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-slate-800/60 py-4 px-6 text-center text-xs text-slate-500">
+      <footer className="relative z-10 border-t border-slate-800/60 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] px-6 text-center text-xs text-slate-500">
         <p>© {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.</p>
       </footer>
     </div>

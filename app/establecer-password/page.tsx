@@ -159,13 +159,13 @@ export default function EstablecerPasswordPage() {
   return (
     <div
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         backgroundColor: '#0b1329',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: '24px 16px',
+        padding: '24px 16px max(24px, env(safe-area-inset-bottom)) 16px',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
       }}
     >

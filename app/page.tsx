@@ -126,6 +126,7 @@ export default function ClienteDashboardTIB() {
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; wr: string } | null>(null);
   const [openingPhotoIndex, setOpeningPhotoIndex] = useState<number | null>(null);
   const [photoOpenError, setPhotoOpenError] = useState<string | null>(null);
+  const [fallbackPhotoUrl, setFallbackPhotoUrl] = useState<{ url: string; label: string } | null>(null);
 
   // Estados de los Módulos de Superadmin: Agregar Cliente y Lista de Clientes
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -232,6 +233,7 @@ export default function ClienteDashboardTIB() {
         setSelectedPhoto(null);
         setOpeningPhotoIndex(null);
         setPhotoOpenError(null);
+        setFallbackPhotoUrl(null);
         setUserMenuOpen(false);
         setIsConsignatarioFilterOpen(false);
         setIsAddClientOpen(false);
@@ -604,13 +606,24 @@ export default function ClienteDashboardTIB() {
     setSelectedPhoto(null);
     setOpeningPhotoIndex(null);
     setPhotoOpenError(null);
+    setFallbackPhotoUrl(null);
   }, []);
 
   const handleOpenOriginalPhoto = useCallback(async (wr: string, photoIndex: number) => {
     setPhotoOpenError(null);
+    setFallbackPhotoUrl(null);
     setOpeningPhotoIndex(photoIndex);
     // Abrir la pestaña síncronamente dentro del clic evita bloqueos de popups en Safari/iOS.
     const popup = window.open('', '_blank');
+    if (popup) {
+      try {
+        popup.document.title = `Cargando foto ${wr} — AMEX Courier`;
+        popup.document.body.innerHTML =
+          '<div style="font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#f8fafc;min-height:100dvh;display:flex;align-items:center;justify-content:center;margin:0;padding:24px;text-align:center;"><div><p style="font-size:16px;font-weight:700;margin:0 0 6px;">Cargando foto original...</p><p style="font-size:13px;color:#94a3b8;margin:0;">Un momento por favor</p></div></div>';
+      } catch {
+        // Ignorar si un WebView bloquea acceso al documento en blanco
+      }
+    }
 
     try {
       const { data: { session } } = await supabasePortal.auth.getSession();
@@ -640,11 +653,14 @@ export default function ClienteDashboardTIB() {
         if (!popup.closed) {
           popup.opener = null;
           popup.location.href = json.url;
+        } else {
+          setFallbackPhotoUrl({ url: json.url, label: 'Abrir foto en tamaño original' });
         }
       } else {
         const opened = window.open(json.url, '_blank', 'noopener,noreferrer');
         if (!opened) {
-          setPhotoOpenError('El navegador bloqueó la nueva pestaña. Permite ventanas emergentes e intenta de nuevo.');
+          setFallbackPhotoUrl({ url: json.url, label: 'Abrir foto en tamaño original' });
+          setPhotoOpenError('Tu navegador bloqueó la pestaña emergente. Toca el enlace directo de abajo:');
         }
       }
     } catch {
@@ -1261,7 +1277,7 @@ export default function ClienteDashboardTIB() {
     return (
       <div 
         style={{ 
-          minHeight: '100vh', 
+          minHeight: '100dvh', 
           backgroundColor: '#111827', 
           display: 'flex', 
           flexDirection: 'column', 
@@ -1296,7 +1312,7 @@ export default function ClienteDashboardTIB() {
       data-portal="client"
       data-lenis-prevent
       style={{ 
-        minHeight: '100vh', 
+        minHeight: '100dvh', 
         backgroundColor: '#f1f3f6', 
         color: '#2c323f', 
         fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' 
@@ -1935,6 +1951,7 @@ export default function ClienteDashboardTIB() {
                     border: 'none',
                     borderRadius: '6px',
                     padding: '9px 24px',
+                    minHeight: '42px',
                     fontSize: '13px',
                     fontWeight: 700,
                     letterSpacing: '0.4px',
@@ -1990,6 +2007,7 @@ export default function ClienteDashboardTIB() {
                     border: showAdvancedFilters || advancedFiltersCount > 0 ? '1.5px solid #ff5722' : '1px solid #d1d5db',
                     borderRadius: '6px',
                     padding: '8px 16px',
+                    minHeight: '42px',
                     fontSize: '13px',
                     fontWeight: 700,
                     letterSpacing: '0.3px',
@@ -2041,6 +2059,7 @@ export default function ClienteDashboardTIB() {
                       border: '1px solid #d1d5db',
                       borderRadius: '6px',
                       padding: '8px 18px',
+                      minHeight: '42px',
                       fontSize: '13px',
                       fontWeight: 600,
                       cursor: 'pointer',
@@ -2150,7 +2169,7 @@ export default function ClienteDashboardTIB() {
                   {/* Configuración detallada de fechas y rango de peso */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
                     {/* Selector de Campo Fecha */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
                         CRITERIO DE FECHA
                       </label>
@@ -2162,7 +2181,7 @@ export default function ClienteDashboardTIB() {
                         }}
                         style={{
                           width: '100%',
-                          height: '38px',
+                          height: '40px',
                           padding: '0 10px',
                           borderRadius: '6px',
                           border: '1px solid #cbd5e1',
@@ -2179,7 +2198,7 @@ export default function ClienteDashboardTIB() {
                     </div>
 
                     {/* Fecha Desde */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
                         FECHA DESDE
                       </label>
@@ -2193,7 +2212,8 @@ export default function ClienteDashboardTIB() {
                         }}
                         style={{
                           width: '100%',
-                          height: '38px',
+                          minWidth: 0,
+                          height: '40px',
                           padding: '0 10px',
                           borderRadius: '6px',
                           border: '1px solid #cbd5e1',
@@ -2206,7 +2226,7 @@ export default function ClienteDashboardTIB() {
                     </div>
 
                     {/* Fecha Hasta */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
                         FECHA HASTA
                       </label>
@@ -2220,7 +2240,8 @@ export default function ClienteDashboardTIB() {
                         }}
                         style={{
                           width: '100%',
-                          height: '38px',
+                          minWidth: 0,
+                          height: '40px',
                           padding: '0 10px',
                           borderRadius: '6px',
                           border: '1px solid #cbd5e1',
@@ -2233,13 +2254,14 @@ export default function ClienteDashboardTIB() {
                     </div>
 
                     {/* Rango de Peso */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
                         RANGO DE PESO (KG)
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <input
                           type="number"
+                          inputMode="decimal"
                           step="0.01"
                           min="0"
                           placeholder="Mín"
@@ -2250,7 +2272,8 @@ export default function ClienteDashboardTIB() {
                           }}
                           style={{
                             width: '50%',
-                            height: '38px',
+                            minWidth: 0,
+                            height: '40px',
                             padding: '0 8px',
                             borderRadius: '6px',
                             border: '1px solid #cbd5e1',
@@ -2263,6 +2286,7 @@ export default function ClienteDashboardTIB() {
                         <span style={{ color: '#94a3b8', fontSize: '12px' }}>–</span>
                         <input
                           type="number"
+                          inputMode="decimal"
                           step="0.01"
                           min="0"
                           placeholder="Máx"
@@ -2273,7 +2297,8 @@ export default function ClienteDashboardTIB() {
                           }}
                           style={{
                             width: '50%',
-                            height: '38px',
+                            minWidth: 0,
+                            height: '40px',
                             padding: '0 8px',
                             borderRadius: '6px',
                             border: '1px solid #cbd5e1',
@@ -2568,10 +2593,11 @@ export default function ClienteDashboardTIB() {
                               {pkg.tib_imagen_url ? (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setPhotoOpenError(null);
-                                    setOpeningPhotoIndex(null);
-                                    setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega });
+                                    onClick={() => {
+                                      setPhotoOpenError(null);
+                                      setFallbackPhotoUrl(null);
+                                      setOpeningPhotoIndex(null);
+                                      setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega });
                                     trackPortalEvent({
                                       usuario_email: user?.email,
                                       tipo_evento: 'VER_FOTO_ALMACEN',
@@ -2637,7 +2663,7 @@ export default function ClienteDashboardTIB() {
                         type="button"
                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                         disabled={currentPage === 1}
-                        style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
+                        style={{ minHeight: '40px', padding: '6px 14px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12.5px', fontWeight: 600 }}
                       >
                         Anterior
                       </button>
@@ -2645,7 +2671,7 @@ export default function ClienteDashboardTIB() {
                         type="button"
                         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                         disabled={currentPage === totalPages}
-                        style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
+                        style={{ minHeight: '40px', padding: '6px 14px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12.5px', fontWeight: 600 }}
                       >
                         Siguiente
                       </button>
@@ -2792,7 +2818,7 @@ export default function ClienteDashboardTIB() {
             </div>
 
             {/* Fila de Tarjetas de Resumen Técnico */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '16px' }}>
 
               {/* Tarjeta Clientes */}
               <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -3520,14 +3546,14 @@ export default function ClienteDashboardTIB() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '720px', width: '100%', padding: '16px', position: 'relative', maxHeight: '92vh', overflowY: 'auto' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '720px', width: '100%', padding: '16px', position: 'relative', maxHeight: '90dvh', overflowY: 'auto' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#fff3e0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '14px', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#fff3e0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Camera style={{ width: '18px', height: '18px', color: '#ff5722' }} />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#111827', margin: 0 }}>
                     Foto de Recepción Miami — WR {selectedPhoto.wr}
                   </h3>
@@ -3542,7 +3568,8 @@ export default function ClienteDashboardTIB() {
               <button
                 type="button"
                 onClick={closePhotoModal}
-                style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                aria-label="Cerrar visor de foto"
+                style={{ minWidth: '38px', minHeight: '38px', padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
@@ -3590,9 +3617,34 @@ export default function ClienteDashboardTIB() {
               ))}
             </div>
 
-            {photoOpenError && (
-              <div style={{ marginTop: '12px', padding: '8px 12px', borderRadius: '6px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '12px', fontWeight: 600 }}>
-                {photoOpenError}
+            {(photoOpenError || fallbackPhotoUrl) && (
+              <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '12px', fontWeight: 600, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {photoOpenError && <span>{photoOpenError}</span>}
+                {fallbackPhotoUrl && (
+                  <a
+                    href={fallbackPhotoUrl.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      alignSelf: 'flex-start',
+                      padding: '8px 14px',
+                      minHeight: '40px',
+                      borderRadius: '6px',
+                      backgroundColor: '#ff5722',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '12.5px',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <span>{fallbackPhotoUrl.label}</span>
+                    <ExternalLink style={{ width: '14px', height: '14px' }} />
+                  </a>
+                )}
               </div>
             )}
 
@@ -3604,7 +3656,7 @@ export default function ClienteDashboardTIB() {
                 type="button"
                 onClick={() => handleOpenOriginalPhoto(selectedPhoto.wr, 0)}
                 disabled={openingPhotoIndex !== null}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '6px', border: 'none', fontSize: '12px', cursor: openingPhotoIndex !== null ? 'wait' : 'pointer', opacity: openingPhotoIndex !== null ? 0.8 : 1, boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minHeight: '42px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '6px', border: 'none', fontSize: '12.5px', cursor: openingPhotoIndex !== null ? 'wait' : 'pointer', opacity: openingPhotoIndex !== null ? 0.8 : 1, boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}
               >
                 <span>{openingPhotoIndex === 0 ? 'Abriendo...' : 'Ver tamaño original'}</span>
                 <ExternalLink style={{ width: '14px', height: '14px' }} />
@@ -3622,14 +3674,14 @@ export default function ClienteDashboardTIB() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '20px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '20px', position: 'relative', maxHeight: '90dvh', overflowY: 'auto' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#ff5722', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#ff5722', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
                   <UserPlus style={{ width: '20px', height: '20px' }} />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#111827', margin: 0 }}>
                     Agregar Usuario Cliente al Portal
                   </h3>
@@ -3641,7 +3693,8 @@ export default function ClienteDashboardTIB() {
               <button
                 type="button"
                 onClick={() => setIsAddClientOpen(false)}
-                style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                aria-label="Cerrar modal"
+                style={{ minWidth: '38px', minHeight: '38px', padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
@@ -3716,7 +3769,7 @@ export default function ClienteDashboardTIB() {
 
               {/* Variaciones o Palabras Clave con Buscador TIB */}
               <div style={{ position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px', marginBottom: '4px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151' }}>
                     Variaciones o Palabras Clave (Opcional, separadas por coma)
                   </label>
@@ -3925,11 +3978,11 @@ export default function ClienteDashboardTIB() {
                 </span>
               </div>
 
-              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setIsAddClientOpen(false)}
-                  style={{ padding: '9px 18px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                  style={{ minHeight: '42px', padding: '9px 18px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancelar
                 </button>
@@ -3937,6 +3990,7 @@ export default function ClienteDashboardTIB() {
                   type="submit"
                   disabled={isCreatingClient}
                   style={{
+                    minHeight: '42px',
                     padding: '9px 22px',
                     borderRadius: '6px',
                     border: 'none',
@@ -3974,18 +4028,18 @@ export default function ClienteDashboardTIB() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '24px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}
+            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '24px', position: 'relative', maxHeight: '90dvh', overflowY: 'auto' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
                   <Settings style={{ width: '20px', height: '20px' }} />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#111827', margin: 0 }}>
                     Configurar Palabras Clave y Matching
                   </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280', wordBreak: 'break-word' }}>
                     Cliente: <strong>{editingClient.nombre_completo}</strong> ({editingClient.email})
                   </p>
                 </div>
@@ -3993,7 +4047,8 @@ export default function ClienteDashboardTIB() {
               <button
                 type="button"
                 onClick={() => setEditingClient(null)}
-                style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                aria-label="Cerrar configuración"
+                style={{ minWidth: '38px', minHeight: '38px', padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
@@ -4419,8 +4474,8 @@ export default function ClienteDashboardTIB() {
           role={toast.type === 'error' ? 'alert' : 'status'}
           style={{
             position: 'fixed',
-            bottom: '20px',
-            right: '20px',
+            bottom: 'calc(16px + env(safe-area-inset-bottom))',
+            right: '16px',
             zIndex: 130,
             maxWidth: 'min(420px, calc(100vw - 32px))',
             backgroundColor: toast.type === 'success' ? '#ecfdf5' : toast.type === 'error' ? '#fef2f2' : '#eff6ff',
@@ -4464,7 +4519,7 @@ export default function ClienteDashboardTIB() {
       )}
 
       {/* Footer minimalista */}
-      <footer style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff', padding: '14px 24px', textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
+      <footer style={{ borderTop: '1px solid #e5e7eb', backgroundColor: '#ffffff', padding: '14px 20px max(14px, env(safe-area-inset-bottom)) 20px', textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
         © {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.
       </footer>
     </div>

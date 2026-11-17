@@ -156,7 +156,7 @@ export default function ClienteLoginPage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: '100vh',
+          minHeight: '100dvh',
           background: theme.pageBackground,
           color: '#f8fafc',
           fontFamily: "'Inter', system-ui, -apple-system, sans-serif",

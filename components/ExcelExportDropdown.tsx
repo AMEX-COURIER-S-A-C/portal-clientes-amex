@@ -130,10 +130,14 @@ export default function ExcelExportDropdown({
       const a = document.createElement('a');
       a.href = downloadUrl;
       a.download = filename;
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      // Safari iOS (WebKit) requiere mantener vivo el Blob URL hasta capturar la descarga.
+      setTimeout(() => {
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 2500);
 
       // Telemetria no bloqueante de descarga Excel
       trackPortalEvent({
@@ -167,6 +171,7 @@ export default function ExcelExportDropdown({
           border: 'none',
           borderRadius: '6px',
           padding: '9px 16px',
+          minHeight: '42px',
           fontSize: '13px',
           fontWeight: 700,
           letterSpacing: '0.3px',
@@ -361,8 +366,8 @@ export default function ExcelExportDropdown({
           role="alert"
           style={{
             position: 'fixed',
-            bottom: '20px',
-            right: '20px',
+            bottom: 'calc(16px + env(safe-area-inset-bottom))',
+            right: '16px',
             zIndex: 130,
             maxWidth: 'calc(100vw - 32px)',
             backgroundColor: '#fef2f2',
@@ -386,7 +391,8 @@ const dropdownItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  padding: '7px 10px',
+  minHeight: '40px',
+  padding: '8px 10px',
   borderRadius: '6px',
   border: 'none',
   background: 'transparent',

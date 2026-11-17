@@ -35,16 +35,34 @@
   body {
     background-color: var(--sap-bg) !important;
     color: var(--sap-text) !important;
-    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: clip;
+  }
+
+  button,
+  a,
+  select,
+  input,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
   }
 }
 
-/* Evita el auto-zoom involuntario de iOS Safari al enfocar inputs en móviles con zoom táctil habilitado */
+/* Evita el auto-zoom involuntario de iOS Safari y normaliza controles nativos en móviles */
 @media (max-width: 767px) {
   input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
     font-size: 16px !important;
+  }
+
+  input[type="date"] {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
   }
 }
 
