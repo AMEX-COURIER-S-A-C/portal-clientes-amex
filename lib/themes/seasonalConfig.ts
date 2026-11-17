@@ -3,8 +3,8 @@
  * CONFIGURACIÓN MAESTRA DE TEMÁTICA POR TEMPORADA (LOGIN Y TRANSICIONES)
  * ============================================================================
  * Cambia `ACTIVE_LOGIN_THEME` entre:
+ *  - 'default'   : Escena Urbana Logística AMEX Courier (Ciudad, Avión Carguero AMEX y Carretera con Furgón AMEX)
  *  - 'halloween' : Escena Halloween 60/120 FPS (calaveras, calabazas, brujas, telarañas)
- *  - 'default'   : Diseño corporativo clásico AMEX Courier (azul y dorado)
  *
  * NOTA: Esta temática solo se aplica en la pantalla de Login (/login) y en las
  * cortinas de transición (entrada y salida). El interior del sistema operativo
@@ -12,7 +12,7 @@
  */
 export type LoginSeasonTheme = 'default' | 'halloween';
 
-export const ACTIVE_LOGIN_THEME: LoginSeasonTheme = 'halloween';
+export const ACTIVE_LOGIN_THEME: LoginSeasonTheme = 'default';
 
 export interface LoginThemeTokens {
   id: LoginSeasonTheme;
@@ -80,29 +80,29 @@ export function getLoginThemeTokens(
     id: 'default',
     isHalloween: false,
     pageBackground:
-      'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 45%), radial-gradient(circle at 85% 80%, rgba(37, 99, 235, 0.14) 0%, transparent 50%), linear-gradient(135deg, #070b14 0%, #0f172a 55%, #090d16 100%)',
-    shellBorder: '1px solid rgba(255, 255, 255, 0.09)',
+      'linear-gradient(180deg, #0c192c 0%, #152947 48%, #213756 76%, #182232 100%)',
+    shellBorder: '1px solid rgba(245, 158, 11, 0.28)',
     shellShadow:
-      '0 30px 70px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(245, 158, 11, 0.08)',
+      '0 30px 75px -15px rgba(4, 9, 20, 0.82), 0 0 42px -12px rgba(245, 158, 11, 0.18), 0 0 0 1px rgba(56, 189, 248, 0.12)',
     leftPanelBackground:
-      'radial-gradient(circle at 20% 15%, rgba(245, 158, 11, 0.14) 0%, transparent 55%), radial-gradient(circle at 85% 90%, rgba(37, 99, 235, 0.18) 0%, transparent 55%), linear-gradient(160deg, #060911 0%, #0b1120 60%, #0f172a 100%)',
-    badgeBackground: 'rgba(245, 158, 11, 0.12)',
-    badgeBorder: '1px solid rgba(245, 158, 11, 0.3)',
+      'radial-gradient(circle at 20% 15%, rgba(245, 158, 11, 0.16) 0%, transparent 55%), radial-gradient(circle at 85% 90%, rgba(37, 99, 235, 0.2) 0%, transparent 55%), linear-gradient(160deg, #070d19 0%, #0c1528 60%, #111c33 100%)',
+    badgeBackground: 'rgba(245, 158, 11, 0.14)',
+    badgeBorder: '1px solid rgba(245, 158, 11, 0.38)',
     badgeColor: '#fbbf24',
     badgeIcon: 'fa-solid fa-plane-departure',
-    badgeText: 'ERP Logístico Internacional',
-    logoBoxBorder: '1px solid rgba(245, 158, 11, 0.22)',
-    logoDropShadow: 'drop-shadow(0 4px 14px rgba(245, 158, 11, 0.2))',
-    portalLabelColor: '#38bdf8',
+    badgeText: 'Casillero Postal Miami – Lima',
+    logoBoxBorder: '1px solid rgba(245, 158, 11, 0.28)',
+    logoDropShadow: 'drop-shadow(0 4px 16px rgba(245, 158, 11, 0.26))',
+    portalLabelColor: '#fbbf24',
     portalIcon: 'fa-solid fa-shield-halved',
     inputFocusBorder: '#f59e0b',
-    inputFocusShadow: '0 0 0 3px rgba(245, 158, 11, 0.15)',
-    submitBtnBackground: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-    submitBtnBorder: '1px solid rgba(56, 189, 248, 0.25)',
-    submitBtnShadow: '0 8px 20px -4px rgba(37, 99, 235, 0.5)',
-    submitBtnHoverShadow: '0 12px 24px -4px rgba(37, 99, 235, 0.65)',
-    progressGradient: 'linear-gradient(90deg, #2563eb, #f59e0b)',
+    inputFocusShadow: '0 0 0 3px rgba(245, 158, 11, 0.18)',
+    submitBtnBackground: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+    submitBtnBorder: '1px solid rgba(251, 191, 36, 0.45)',
+    submitBtnShadow: '0 8px 22px -4px rgba(245, 158, 11, 0.45)',
+    submitBtnHoverShadow: '0 12px 28px -4px rgba(245, 158, 11, 0.62)',
+    progressGradient: 'linear-gradient(90deg, #f59e0b, #fbbf24, #38bdf8)',
     spinnerColor: '#f59e0b',
-    logoutShieldColor: '#38bdf8',
+    logoutShieldColor: '#fbbf24',
   };
 }

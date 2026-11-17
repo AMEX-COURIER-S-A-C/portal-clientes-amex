@@ -6,6 +6,7 @@ import { supabasePortal } from '@/lib/supabase/portal-client';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
 import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
 import { HalloweenBackdrop, HalloweenCornerWebs } from '@/components/themes/HalloweenBackdrop';
+import { AviationLogisticsBackdrop } from '@/components/themes/AviationLogisticsBackdrop';
 
 export default function ClienteLoginPage() {
   const router = useRouter();
@@ -165,7 +166,7 @@ export default function ClienteLoginPage() {
           overflow: 'hidden',
         }}
       >
-        {theme.isHalloween && <HalloweenBackdrop />}
+        {theme.isHalloween ? <HalloweenBackdrop /> : <AviationLogisticsBackdrop />}
         <style>{`
           @keyframes amexEntryCardIn {
             from { opacity: 0; transform: scale(0.97) translateY(6px); }
@@ -267,7 +268,7 @@ export default function ClienteLoginPage() {
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      {theme.isHalloween && <HalloweenBackdrop />}
+      {theme.isHalloween ? <HalloweenBackdrop /> : <AviationLogisticsBackdrop />}
 
       <style>{`
         @keyframes amexLoginShellIn {
@@ -300,7 +301,7 @@ export default function ClienteLoginPage() {
           z-index: 4;
           background: radial-gradient(
             420px circle at var(--spot-x) var(--spot-y),
-            ${theme.isHalloween ? 'rgba(249, 115, 22, 0.11)' : 'rgba(56, 189, 248, 0.08)'},
+            ${theme.isHalloween ? 'rgba(249, 115, 22, 0.11)' : 'rgba(245, 158, 11, 0.11)'},
             transparent 65%
           );
           opacity: var(--spot-opacity);
@@ -349,6 +350,7 @@ export default function ClienteLoginPage() {
           border-radius: 10px;
           background: ${theme.submitBtnBackground};
           color: #ffffff;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
           border: ${theme.submitBtnBorder};
           font-weight: 800;
           font-size: 14px;
