@@ -22,6 +22,7 @@ import {
   UserX,
 } from 'lucide-react';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { scrollElementToStart } from '@/lib/portal/scroll';
 import { ClientePortalItem, formatDateTimeTIB } from '@/lib/portal/types';
 
 export interface AdminConfigViewProps {
@@ -89,6 +90,14 @@ export default function AdminConfigView({
   onRequestDeactivateClient,
   onAssignTibClientToPortal,
 }: AdminConfigViewProps) {
+  const tibTableRef = React.useRef<HTMLDivElement | null>(null);
+
+  const goToTibPage = (nextPage: number) => {
+    if (nextPage === tibCatalogPage) return;
+    setTibCatalogPage(nextPage);
+    scrollElementToStart(tibTableRef.current);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Cabecera del Panel de Configuración */}
@@ -701,7 +710,7 @@ export default function AdminConfigView({
               </span>
             </div>
 
-            <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+            <div ref={tibTableRef} style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', scrollMarginTop: '72px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
@@ -796,7 +805,7 @@ export default function AdminConfigView({
                   <button
                     type="button"
                     disabled={tibCatalogPage <= 1 || isLoadingTibCatalog}
-                    onClick={() => setTibCatalogPage(Math.max(1, tibCatalogPage - 1))}
+                    onClick={() => goToTibPage(Math.max(1, tibCatalogPage - 1))}
                     style={{
                       padding: '6px 12px',
                       borderRadius: '5px',
@@ -813,7 +822,7 @@ export default function AdminConfigView({
                   <button
                     type="button"
                     disabled={tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) || isLoadingTibCatalog}
-                    onClick={() => setTibCatalogPage(tibCatalogPage + 1)}
+                    onClick={() => goToTibPage(tibCatalogPage + 1)}
                     style={{
                       padding: '6px 12px',
                       borderRadius: '5px',

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import ExcelExportDropdown from '@/components/ExcelExportDropdown';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
+import { scrollElementToStart } from '@/lib/portal/scroll';
 import {
   ESTADOS_DISPONIBLES,
   formatDateTimeTIB,
@@ -139,6 +140,14 @@ export default function WarehouseView({
   onSelectPhoto,
   onShowErrorToast,
 }: WarehouseViewProps) {
+  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  const goToPage = (nextPage: number) => {
+    if (nextPage === currentPage) return;
+    setCurrentPage(nextPage);
+    scrollElementToStart(tableContainerRef.current);
+  };
+
   return (
     <>
       {/* Título de la sección estilo TIB */}
@@ -1130,7 +1139,10 @@ export default function WarehouseView({
       )}
 
       {/* Tabla Principal Estilo TIB */}
-      <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+      <div
+        ref={tableContainerRef}
+        style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden', scrollMarginTop: '72px' }}
+      >
         <div className="flex md:hidden items-center justify-between px-4 py-2.5 bg-[#f8fafc] border-b border-gray-200 text-xs">
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: '#374151' }}>
             <ArrowRightLeft style={{ width: '13px', height: '13px', color: '#ff5722' }} />
@@ -1304,7 +1316,7 @@ export default function WarehouseView({
               <div className="flex sm:hidden items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  onClick={() => goToPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
                   style={{ minHeight: '40px', padding: '6px 14px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12.5px', fontWeight: 600 }}
                 >
@@ -1312,7 +1324,7 @@ export default function WarehouseView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage === totalPages}
                   style={{ minHeight: '40px', padding: '6px 14px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12.5px', fontWeight: 600 }}
                 >
@@ -1324,7 +1336,7 @@ export default function WarehouseView({
                 {currentPage > 3 && (
                   <button
                     type="button"
-                    onClick={() => setCurrentPage(1)}
+                    onClick={() => goToPage(1)}
                     style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
                     title="Primera página"
                   >
@@ -1334,7 +1346,7 @@ export default function WarehouseView({
 
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  onClick={() => goToPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
                   style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
                 >
@@ -1346,7 +1358,7 @@ export default function WarehouseView({
                     <button
                       key={page}
                       type="button"
-                      onClick={() => setCurrentPage(page)}
+                      onClick={() => goToPage(page)}
                       style={{
                         minWidth: '32px',
                         height: '32px',
@@ -1367,7 +1379,7 @@ export default function WarehouseView({
 
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage === totalPages}
                   style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
                 >
@@ -1377,7 +1389,7 @@ export default function WarehouseView({
                 {currentPage < totalPages - 2 && (
                   <button
                     type="button"
-                    onClick={() => setCurrentPage(totalPages)}
+                    onClick={() => goToPage(totalPages)}
                     style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
                     title="Última página"
                   >
