@@ -468,6 +468,18 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     [data?.clientes]
   );
 
+  const topClienteActivo = useMemo(() => {
+    const candidates = (data?.clientes || []).filter(c => c.total_eventos > 0);
+    if (candidates.length === 0) return null;
+    const sorted = [...candidates].sort((a, b) => b.total_eventos - a.total_eventos);
+    const activeName = data?.resumen_kpis?.cliente_mas_activo;
+    if (activeName && activeName !== 'Sin datos') {
+      const exactMatch = sorted.find(c => c.nombre_completo === activeName);
+      if (exactMatch) return exactMatch;
+    }
+    return sorted[0];
+  }, [data?.clientes, data?.resumen_kpis?.cliente_mas_activo]);
+
   const horasPico = [...horas]
     .filter(h => h.cantidad > 0)
     .sort((a, b) => b.cantidad - a.cantidad)
@@ -515,11 +527,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   // Comparación contra el período inmediatamente anterior del mismo tamaño.
   const renderVariation = (current: number, previousValue?: number | null) => {
     if (!previousValue || previousValue <= 0) {
-      return (
-        <span style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 500 }}>
-          Sin base anterior
-        </span>
-      );
+      return null;
     }
 
     const delta = current - previousValue;
@@ -527,12 +535,16 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     const isUp = delta >= 0;
 
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', fontWeight: 700, color: isUp ? '#16a34a' : '#dc2626', flexWrap: 'wrap' }}>
-        <span>{isUp ? '▲' : '▼'} {Math.abs(pct)}%</span>
-        <span style={{ color: '#94a3b8', fontWeight: 500 }}>
-          vs. período anterior ({previousValue.toLocaleString()})
-        </span>
-      </span>
+      <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
+        <div style={{ paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', fontWeight: 700, color: isUp ? '#16a34a' : '#dc2626', flexWrap: 'wrap' }}>
+            <span>{isUp ? '▲' : '▼'} {Math.abs(pct)}%</span>
+            <span style={{ color: '#94a3b8', fontWeight: 500 }}>
+              vs. período anterior ({previousValue.toLocaleString()})
+            </span>
+          </span>
+        </div>
+      </div>
     );
   };
 
@@ -542,6 +554,17 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     borderRadius: '12px',
     border: '1px solid #e2e8f0',
     boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+  };
+
+  const topKpiCardStyle: React.CSSProperties = {
+    backgroundColor: '#ffffff',
+    padding: '14px 16px',
+    borderRadius: '12px',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
   };
 
   const sectionTitleStyle: React.CSSProperties = {
@@ -743,128 +766,131 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
         </div>
       )}
 
-      {/* 2. Tarjetas Ejecutivas de KPIs (5 Indicadores Clave) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '14px' }}>
-        
-        {/* KPI 1: Usuarios Activos Hoy */}
-        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Activos Hoy</span>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users style={{ width: '17px', height: '17px', color: '#2563eb' }} />
+      {/* 2. Tarjetas Ejecutivas de KPIs (6 Indicadores en 1 Fila en Escritorio) */}
+      <div className="analytics-kpi-grid">
+        {[
+          {
+            key: 'activos-hoy',
+            title: 'Activos Hoy',
+            iconBg: '#eff6ff',
+            icon: <Users style={{ width: '15px', height: '15px', color: '#2563eb' }} />,
+            value: kpis.activos_hoy,
+            variation: renderVariation(kpis.activos_periodo, prev?.activos_periodo),
+            body: (
+              <>
+                <div style={{ marginTop: '5px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+                  <strong style={{ color: '#16a34a' }}>
+                    {kpis.total_clientes > 0 ? `${Math.round((kpis.activos_periodo / kpis.total_clientes) * 100)}%` : '0%'}
+                  </strong>{' '}
+                  con actividad real en {days} días ({kpis.activos_periodo} de {kpis.total_clientes})
+                </div>
+                <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
+                  <strong style={{ color: '#2563eb' }}>{kpis.total_logins}</strong> login(s) en el período
+                </div>
+              </>
+            ),
+          },
+          {
+            key: 'busquedas',
+            title: 'Búsquedas de Paquetes',
+            iconBg: '#ecfdf5',
+            icon: <Search style={{ width: '15px', height: '15px', color: '#059669' }} />,
+            value: kpis.total_busquedas.toLocaleString(),
+            variation: renderVariation(kpis.total_busquedas, prev?.total_busquedas),
+            body: (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginTop: '5px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+                <TrendingUp style={{ width: '12px', height: '12px', color: '#059669', flexShrink: 0, marginTop: '2px' }} />
+                <span>Consultas WR / Guía / Consignatario</span>
+              </div>
+            ),
+          },
+          {
+            key: 'fotos',
+            title: 'Fotos Almacén Vistas',
+            iconBg: '#fff7ed',
+            icon: <ImageIcon style={{ width: '15px', height: '15px', color: '#ea580c' }} />,
+            value: kpis.total_fotos_vistas.toLocaleString(),
+            variation: renderVariation(kpis.total_fotos_vistas, prev?.total_fotos_vistas),
+            body: (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginTop: '5px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+                <Eye style={{ width: '12px', height: '12px', color: '#ea580c', flexShrink: 0, marginTop: '2px' }} />
+                <span>Inspecciones visuales de paquetes</span>
+              </div>
+            ),
+          },
+          {
+            key: 'excel',
+            title: 'Reportes Descargados',
+            iconBg: '#f5f3ff',
+            icon: <FileSpreadsheet style={{ width: '15px', height: '15px', color: '#7c3aed' }} />,
+            value: kpis.total_descargas_excel.toLocaleString(),
+            variation: renderVariation(kpis.total_descargas_excel, prev?.total_descargas_excel),
+            body: (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginTop: '5px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+                <Download style={{ width: '12px', height: '12px', color: '#7c3aed', flexShrink: 0, marginTop: '2px' }} />
+                <span>Exportaciones a Excel generadas</span>
+              </div>
+            ),
+          },
+          {
+            key: 'correos',
+            title: 'Correos Automáticos',
+            iconBg: '#f0f9ff',
+            iconBorder: '1px solid #e0f2fe',
+            icon: <Mail style={{ width: '15px', height: '15px', color: '#0284c7' }} />,
+            value: (kpis.total_correos_enviados || 0).toLocaleString(),
+            variation: renderVariation(kpis.total_correos_enviados || 0, prev?.total_correos_enviados),
+            body: (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginTop: '5px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+                <Send style={{ width: '12px', height: '12px', color: '#0284c7', flexShrink: 0, marginTop: '2px' }} />
+                <span>Enviados por el sistema · no cuentan como actividad</span>
+              </div>
+            ),
+          },
+        ].map(card => (
+          <div key={card.key} style={topKpiCardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b', lineHeight: 1.25 }}>{card.title}</span>
+              <div style={{ width: '28px', height: '28px', flexShrink: 0, borderRadius: '8px', backgroundColor: card.iconBg, border: card.iconBorder, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {card.icon}
+              </div>
             </div>
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
-            {kpis.activos_hoy}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-            <span style={{ fontWeight: 700, color: '#16a34a' }}>
-              {kpis.total_clientes > 0 ? `${Math.round((kpis.activos_periodo / kpis.total_clientes) * 100)}%` : '0%'}
-            </span>
-            <span>con actividad real en {days} días ({kpis.activos_periodo} de {kpis.total_clientes})</span>
-          </div>
-          <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-            <strong style={{ color: '#2563eb' }}>{kpis.total_logins}</strong> login(s) en el período
-          </div>
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-            {renderVariation(kpis.activos_periodo, prev?.activos_periodo)}
-          </div>
-        </div>
-
-        {/* KPI 2: Búsquedas Realizadas */}
-        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Búsquedas de Paquetes</span>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Search style={{ width: '17px', height: '17px', color: '#059669' }} />
+            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px', lineHeight: 1.15 }}>
+              {card.value}
             </div>
+            {card.body}
+            {card.variation}
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
-            {kpis.total_busquedas.toLocaleString()}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-            <TrendingUp style={{ width: '12px', height: '12px', color: '#059669' }} />
-            <span>Consultas WR / Guía / Consignatario</span>
-          </div>
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-            {renderVariation(kpis.total_busquedas, prev?.total_busquedas)}
-          </div>
-        </div>
-
-        {/* KPI 3: Fotos de Almacén Inspeccionadas */}
-        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Fotos Almacén Vistas</span>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ImageIcon style={{ width: '17px', height: '17px', color: '#ea580c' }} />
-            </div>
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
-            {kpis.total_fotos_vistas.toLocaleString()}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-            <Eye style={{ width: '12px', height: '12px', color: '#ea580c' }} />
-            <span>Inspecciones visuales de paquetes</span>
-          </div>
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-            {renderVariation(kpis.total_fotos_vistas, prev?.total_fotos_vistas)}
-          </div>
-        </div>
-
-        {/* KPI 4: Descargas de Excel */}
-        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Reportes Descargados</span>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <FileSpreadsheet style={{ width: '17px', height: '17px', color: '#7c3aed' }} />
-            </div>
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
-            {kpis.total_descargas_excel.toLocaleString()}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-            <Download style={{ width: '12px', height: '12px', color: '#7c3aed' }} />
-            <span>Exportaciones a Excel generadas</span>
-          </div>
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-            {renderVariation(kpis.total_descargas_excel, prev?.total_descargas_excel)}
-          </div>
-        </div>
-
-        {/* KPI 5: Correos Enviados a Clientes */}
-        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Correos Automáticos</span>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f0f9ff', border: '1px solid #e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Mail style={{ width: '17px', height: '17px', color: '#0284c7' }} />
-            </div>
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
-            {(kpis.total_correos_enviados || 0).toLocaleString()}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-            <Send style={{ width: '12px', height: '12px', color: '#0284c7' }} />
-            <span>Enviados por el sistema · no cuentan como actividad</span>
-          </div>
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-            {renderVariation(kpis.total_correos_enviados || 0, prev?.total_correos_enviados)}
-          </div>
-        </div>
+        ))}
 
         {/* KPI 6: Cliente Más Frecuente */}
-        <div style={{ backgroundColor: '#ffffff', padding: '18px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Cliente Más Activo</span>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Sparkles style={{ width: '17px', height: '17px', color: '#d97706' }} />
+        <div
+          style={topKpiCardStyle}
+          title={topClienteActivo ? `${kpis.cliente_mas_activo} (${topClienteActivo.email})` : kpis.cliente_mas_activo}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b', lineHeight: 1.25 }}>Cliente Más Activo</span>
+            <div style={{ width: '28px', height: '28px', flexShrink: 0, borderRadius: '8px', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles style={{ width: '15px', height: '15px', color: '#d97706' }} />
             </div>
           </div>
-          <div style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
             {kpis.cliente_mas_activo}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
-            <Activity style={{ width: '12px', height: '12px', color: '#d97706' }} />
-            <span>Mayor interacción en la plataforma</span>
+          {topClienteActivo && (
+            <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {topClienteActivo.email}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginTop: '6px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+            <Activity style={{ width: '12px', height: '12px', color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
+            {topClienteActivo ? (
+              <span>
+                <strong style={{ color: '#b45309' }}>{topClienteActivo.total_eventos.toLocaleString()}</strong> ev. en {days} días
+              </span>
+            ) : (
+              <span>Mayor interacción en la plataforma</span>
+            )}
           </div>
         </div>
 
@@ -1503,14 +1529,17 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                   const ratio = c.total_eventos / (c.paquetes_estimados || 1);
                   const ratioLabel = ratio === 0 ? '0' : ratio < 0.1 ? '<0.1' : String(Math.round(ratio * 10) / 10);
                   return (
-                    <div key={`paquetes-${c.email}`}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11.5px', marginBottom: '3px' }}>
-                        <span style={{ color: '#0f172a', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div key={`paquetes-${c.email}`} title={`${c.nombre_completo} (${c.email})`}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11.5px', marginBottom: '2px' }}>
+                        <span style={{ color: '#0f172a', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                           {c.nombre_completo}
                         </span>
-                        <span style={{ color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        <span style={{ color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {c.paquetes_estimados.toLocaleString()} pkg · {c.total_eventos.toLocaleString()} ev.
                         </span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.email}
                       </div>
                       {c.total_eventos === 0 ? (
                         <div style={{ fontSize: '9.5px', color: '#dc2626', fontWeight: 600 }}>
