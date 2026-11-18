@@ -340,7 +340,7 @@ export default function EstablecerPasswordPage() {
 
               <button
                 type="button"
-                onClick={() => router.push('/')}
+                onClick={() => router.push('/warehouse')}
                 style={{
                   width: '100%',
                   height: '46px',

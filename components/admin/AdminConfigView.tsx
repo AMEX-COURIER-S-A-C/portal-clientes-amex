@@ -22,8 +22,10 @@ import {
   UserX,
 } from 'lucide-react';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { cleanExactString } from '@/lib/portal/keywords';
 import { scrollElementToStart } from '@/lib/portal/scroll';
-import { ClientePortalItem, formatDateTimeTIB } from '@/lib/portal/types';
+import { ConfigTableSkeletonRows } from '@/components/ui/PortalSkeletons';
+import { ClientePortalItem, formatDateTimeTIB, TibCatalogClient } from '@/lib/portal/types';
 
 export interface AdminConfigViewProps {
   clientsList: ClientePortalItem[];
@@ -43,11 +45,12 @@ export interface AdminConfigViewProps {
   openKeywordsClientId: string | null;
   tibCatalogSearch: string;
   setTibCatalogSearch: React.Dispatch<React.SetStateAction<string>>;
-  tibCatalogList: any[];
+  tibCatalogList: TibCatalogClient[];
   tibCatalogTotal: number;
   isLoadingTibCatalog: boolean;
   tibCatalogPage: number;
   setTibCatalogPage: React.Dispatch<React.SetStateAction<number>>;
+  assignedConsigneeMap?: Map<string, { email: string; nombre_completo: string }>;
   onSelectTab: (tab: 'warehouse' | 'configuracion' | 'analiticas') => void;
   onSyncAllFromTib: () => void;
   onOpenAddClientModal: () => void;
@@ -55,7 +58,7 @@ export interface AdminConfigViewProps {
   onRequestResetPassword: (client: ClientePortalItem) => void;
   onToggleClientActive: (clientId: string, targetActive: boolean) => void;
   onRequestDeactivateClient: (client: ClientePortalItem) => void;
-  onAssignTibClientToPortal: (client: any) => void;
+  onAssignTibClientToPortal: (client: TibCatalogClient) => void;
 }
 
 export default function AdminConfigView({
@@ -81,6 +84,7 @@ export default function AdminConfigView({
   isLoadingTibCatalog,
   tibCatalogPage,
   setTibCatalogPage,
+  assignedConsigneeMap,
   onSelectTab,
   onSyncAllFromTib,
   onOpenAddClientModal,
@@ -295,7 +299,10 @@ export default function AdminConfigView({
             }}
           >
             <Package style={{ width: '15px', height: '15px' }} />
-            <span>Catálogo Consignatarios TIB ({tibCatalogTotal || 3360})</span>
+            <span>
+              Catálogo Consignatarios TIB
+              {tibCatalogTotal > 0 ? ` (${tibCatalogTotal.toLocaleString()})` : ''}
+            </span>
           </button>
         </div>
 
@@ -345,14 +352,15 @@ export default function AdminConfigView({
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
-                <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} aria-hidden="true" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+              <div style={{ position: 'relative', width: '340px', maxWidth: '100%' }}>
+                <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} aria-hidden="true" />
                 <input
                   type="text"
                   value={clientSearchQuery}
                   onChange={(e) => setClientSearchQuery(e.target.value)}
                   placeholder="Buscar cliente, correo o consignatario..."
+                  className="amex-input"
                   style={{
                     width: '100%',
                     height: '38px',
@@ -361,7 +369,6 @@ export default function AdminConfigView({
                     borderRadius: '6px',
                     border: '1px solid #d1d5db',
                     fontSize: '12.5px',
-                    outline: 'none',
                   }}
                 />
                 {clientSearchQuery && (
@@ -369,6 +376,7 @@ export default function AdminConfigView({
                     type="button"
                     onClick={() => setClientSearchQuery('')}
                     aria-label="Limpiar búsqueda de clientes"
+                    className="amex-focus-ring"
                     style={{
                       position: 'absolute',
                       right: '8px',
@@ -382,12 +390,18 @@ export default function AdminConfigView({
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      borderRadius: '4px',
                     }}
                   >
                     <X style={{ width: '14px', height: '14px' }} aria-hidden="true" />
                   </button>
                 )}
               </div>
+              <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: 600 }}>
+                {clientSearchQuery.trim()
+                  ? `Mostrando ${filteredClientsList.length} de ${clientsList.length} usuarios`
+                  : `${clientsList.length} ${clientsList.length === 1 ? 'usuario registrado' : 'usuarios registrados'}`}
+              </span>
             </div>
 
             <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
@@ -402,20 +416,41 @@ export default function AdminConfigView({
                     <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center', minWidth: '350px' }}>Acciones</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {isLoadingClients ? (
-                    <tr>
-                      <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
-                        <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
-                        <span>Cargando directorio de clientes...</span>
-                      </td>
-                    </tr>
+                <tbody style={{ opacity: isLoadingClients && clientsList.length > 0 ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                  {isLoadingClients && clientsList.length === 0 ? (
+                    <ConfigTableSkeletonRows rows={7} variant="usuarios" />
                   ) : filteredClientsList.length === 0 ? (
                     <tr>
                       <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
                         <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
-                        <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
-                        <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón &quot;+ Agregar Cliente&quot;.</p>
+                        <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>
+                          {clientSearchQuery.trim()
+                            ? `No hay clientes que coincidan con "${clientSearchQuery.trim()}"`
+                            : 'No hay clientes registrados todavía'}
+                        </p>
+                        {clientSearchQuery.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => setClientSearchQuery('')}
+                            style={{
+                              marginTop: '10px',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #d1d5db',
+                              backgroundColor: '#ffffff',
+                              color: '#374151',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Limpiar filtro
+                          </button>
+                        ) : (
+                          <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                            Crea un cliente nuevo con el botón &quot;+ Agregar Cliente&quot;.
+                          </p>
+                        )}
                       </td>
                     </tr>
                   ) : (
@@ -684,7 +719,26 @@ export default function AdminConfigView({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
               <div style={{ position: 'relative', width: '360px', maxWidth: '100%' }}>
-                <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                {isLoadingTibCatalog ? (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      left: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid #ff5722',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                ) : (
+                  <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} aria-hidden="true" />
+                )}
                 <input
                   type="text"
                   value={tibCatalogSearch}
@@ -692,21 +746,53 @@ export default function AdminConfigView({
                     setTibCatalogSearch(e.target.value);
                     setTibCatalogPage(1);
                   }}
-                  placeholder="Buscar en los 3,360 consignatarios TIB..."
+                  placeholder={
+                    tibCatalogTotal > 0
+                      ? `Buscar en ${tibCatalogTotal.toLocaleString()} consignatarios TIB...`
+                      : 'Buscar consignatarios TIB...'
+                  }
+                  className="amex-input"
                   style={{
                     width: '100%',
                     height: '38px',
                     paddingLeft: '32px',
-                    paddingRight: '10px',
+                    paddingRight: tibCatalogSearch ? '32px' : '10px',
                     borderRadius: '6px',
                     border: '1px solid #d1d5db',
                     fontSize: '12.5px',
-                    outline: 'none',
                   }}
                 />
+                {tibCatalogSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTibCatalogSearch('');
+                      setTibCatalogPage(1);
+                    }}
+                    aria-label="Limpiar búsqueda de consignatarios"
+                    className="amex-focus-ring"
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      color: '#9ca3af',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    <X style={{ width: '14px', height: '14px' }} aria-hidden="true" />
+                  </button>
+                )}
               </div>
               <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: 600 }}>
-                Mostrando {tibCatalogList.length} de {tibCatalogTotal} consignatarios
+                Mostrando {tibCatalogList.length} de {tibCatalogTotal.toLocaleString()} consignatarios
               </span>
             </div>
 
@@ -724,27 +810,69 @@ export default function AdminConfigView({
                     <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'right' }}>Acción</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {isLoadingTibCatalog ? (
-                    <tr>
-                      <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
-                        <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
-                        <span>Cargando consignatarios de TIB...</span>
-                      </td>
-                    </tr>
+                <tbody style={{ opacity: isLoadingTibCatalog && tibCatalogList.length > 0 ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
+                  {isLoadingTibCatalog && tibCatalogList.length === 0 ? (
+                    <ConfigTableSkeletonRows rows={8} variant="tib" />
                   ) : tibCatalogList.length === 0 ? (
                     <tr>
                       <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
                         <Package style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
-                        <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay consignatarios que coincidan</p>
-                        <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Prueba buscando otro nombre.</p>
+                        <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>
+                          {tibCatalogSearch.trim()
+                            ? `No hay consignatarios que coincidan con "${tibCatalogSearch.trim()}"`
+                            : 'No hay consignatarios registrados'}
+                        </p>
+                        {tibCatalogSearch.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTibCatalogSearch('');
+                              setTibCatalogPage(1);
+                            }}
+                            style={{
+                              marginTop: '10px',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #d1d5db',
+                              backgroundColor: '#ffffff',
+                              color: '#374151',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Limpiar búsqueda
+                          </button>
+                        ) : (
+                          <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Prueba buscando otro nombre.</p>
+                        )}
                       </td>
                     </tr>
                   ) : (
-                    tibCatalogList.map((client, idx) => (
+                    tibCatalogList.map((client, idx) => {
+                      const portalOwner = assignedConsigneeMap?.get(cleanExactString(client.nombre));
+                      return (
                       <tr key={client.id || idx} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
                         <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
-                          {client.nombre}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>{client.nombre}</span>
+                            {portalOwner && (
+                              <span
+                                title={`Vinculado en portal a ${portalOwner.email}`}
+                                style={{
+                                  backgroundColor: '#ecfdf5',
+                                  color: '#047857',
+                                  border: '1px solid #a7f3d0',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ✓ En portal ({portalOwner.email})
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '12px 14px', color: '#6b7280', fontFamily: 'monospace', fontSize: '12px' }}>
                           #{client.iclient || 'S/ID'}
@@ -790,7 +918,8 @@ export default function AdminConfigView({
                           </button>
                         </td>
                       </tr>
-                    ))
+                    );
+                  })
                   )}
                 </tbody>
               </table>
@@ -799,7 +928,7 @@ export default function AdminConfigView({
             {tibCatalogTotal > 15 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginTop: '12px', fontSize: '12px', color: '#6b7280' }}>
                 <span>
-                  Página <strong>{tibCatalogPage}</strong> de <strong>{Math.ceil(tibCatalogTotal / 15)}</strong> ({tibCatalogTotal} clientes)
+                  Página <strong>{tibCatalogPage}</strong> de <strong>{Math.ceil(tibCatalogTotal / 15)}</strong> ({tibCatalogTotal.toLocaleString()} clientes)
                 </span>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button

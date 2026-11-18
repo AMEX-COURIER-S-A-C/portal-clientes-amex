@@ -25,6 +25,18 @@ export interface ClientePortalItem {
   creado_en: string;
 }
 
+export interface TibCatalogClient {
+  id: string | number;
+  nombre: string;
+  iclient?: string | null;
+  total_paquetes: number;
+  recibidos: number;
+  enviados: number;
+  entregados: number;
+  ultimo_wr?: string | null;
+  email?: string | null;
+}
+
 export interface ToastNotice {
   id: number;
   type: 'success' | 'error' | 'info';

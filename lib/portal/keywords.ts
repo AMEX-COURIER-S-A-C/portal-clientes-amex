@@ -10,6 +10,16 @@ export function cleanExactString(str: unknown): string {
     .replace(/\s+/g, ' ');
 }
 
+export function normalizeSearchText(str: unknown): string {
+  return String(str || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function sanitizePostgrestFilterTerm(term: string): string {
   return String(term || '').replace(/["'(),*%]/g, '').trim();
 }

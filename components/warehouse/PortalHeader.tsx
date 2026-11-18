@@ -1,16 +1,18 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { ChevronDown, Package, Settings, BarChart3, LogOut } from 'lucide-react';
 
 export interface PortalHeaderProps {
   user: any;
   isSuperadmin: boolean;
-  activeTab: 'warehouse' | 'configuracion' | 'analiticas';
+  activeTab?: 'warehouse' | 'configuracion' | 'analiticas';
   userMenuOpen: boolean;
   setUserMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   userMenuRef: React.RefObject<HTMLDivElement | null>;
-  onSelectTab: (tab: 'warehouse' | 'configuracion' | 'analiticas') => void;
+  onSelectTab?: (tab: 'warehouse' | 'configuracion' | 'analiticas') => void;
   onLogout: () => void;
 }
 
@@ -21,14 +23,35 @@ export default function PortalHeader({
   userMenuOpen,
   setUserMenuOpen,
   userMenuRef,
-  onSelectTab,
   onLogout,
 }: PortalHeaderProps) {
+  const pathname = usePathname();
+  const currentTab: 'warehouse' | 'configuracion' | 'analiticas' =
+    activeTab ??
+    (pathname?.startsWith('/configuracion')
+      ? 'configuracion'
+      : pathname?.startsWith('/analiticas')
+      ? 'analiticas'
+      : 'warehouse');
+
+  const navLinkStyle = (tab: 'warehouse' | 'configuracion' | 'analiticas'): React.CSSProperties => ({
+    width: '100%',
+    textAlign: 'left',
+    padding: '8px 14px',
+    color: currentTab === tab ? '#ff5722' : '#1f2937',
+    fontSize: '12px',
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    textDecoration: 'none',
+  });
+
   return (
     <header style={{ backgroundColor: '#1e2229', color: '#ffffff', height: '56px', display: 'flex', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 40 }}>
       <div className="px-4 sm:px-6 lg:px-8 xl:px-10" style={{ maxWidth: '1400px', width: '100%', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         {/* Logo y título */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+        <Link href="/warehouse" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, textDecoration: 'none' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/images/logo-amex-clean.png"
@@ -46,7 +69,7 @@ export default function PortalHeader({
           >
             Gestor de Almacén AMEX Courier
           </span>
-        </div>
+        </Link>
 
         {/* Usuario / Dropdown a la derecha */}
         <div ref={userMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -73,29 +96,32 @@ export default function PortalHeader({
                     Configuración
                   </div>
 
-                  <button
-                    onClick={() => onSelectTab('warehouse')}
-                    style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: activeTab === 'warehouse' ? '#ff5722' : '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  <Link
+                    href="/warehouse"
+                    onClick={() => setUserMenuOpen(false)}
+                    style={navLinkStyle('warehouse')}
                   >
                     <Package style={{ width: '14px', height: '14px', color: '#ff5722' }} />
                     <span>Listado Warehouse</span>
-                  </button>
+                  </Link>
 
-                  <button
-                    onClick={() => onSelectTab('configuracion')}
-                    style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: activeTab === 'configuracion' ? '#ff5722' : '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  <Link
+                    href="/configuracion"
+                    onClick={() => setUserMenuOpen(false)}
+                    style={navLinkStyle('configuracion')}
                   >
                     <Settings style={{ width: '14px', height: '14px', color: '#ff5722' }} />
                     <span>Panel de Configuración</span>
-                  </button>
+                  </Link>
 
-                  <button
-                    onClick={() => onSelectTab('analiticas')}
-                    style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: activeTab === 'analiticas' ? '#ff5722' : '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                  <Link
+                    href="/analiticas"
+                    onClick={() => setUserMenuOpen(false)}
+                    style={navLinkStyle('analiticas')}
                   >
                     <BarChart3 style={{ width: '14px', height: '14px', color: '#ff5722' }} />
                     <span>Estadísticas y Analíticas</span>
-                  </button>
+                  </Link>
                 </div>
               )}
 

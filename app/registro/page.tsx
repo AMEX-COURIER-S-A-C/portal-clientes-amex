@@ -85,7 +85,7 @@ function ClienteRegistroForm() {
 
       setSuccessMessage('¡Cuenta activada con éxito! Redirigiendo a tu panel...');
       setTimeout(() => {
-        router.push('/');
+        router.push('/warehouse');
       }, 1500);
     } catch (err: any) {
       setErrorMessage(err.message || 'Error al registrar tu cuenta');

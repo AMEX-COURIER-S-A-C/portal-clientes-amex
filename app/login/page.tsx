@@ -36,7 +36,7 @@ export default function ClienteLoginPage() {
   useEffect(() => {
     supabasePortal.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        router.replace('/');
+        router.replace('/warehouse');
       }
     });
   }, [router]);
@@ -86,7 +86,7 @@ export default function ClienteLoginPage() {
 
         setIsTransitioningIn(true);
         setTimeout(() => {
-          router.push('/');
+          router.push('/warehouse');
         }, 400);
         return;
       }
@@ -133,7 +133,7 @@ export default function ClienteLoginPage() {
 
           setIsTransitioningIn(true);
           setTimeout(() => {
-            router.push('/');
+            router.push('/warehouse');
           }, 400);
           return;
         }

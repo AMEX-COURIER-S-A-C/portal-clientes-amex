@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { authFetch } from '@/lib/portal/authFetch';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { ConfigurarClientePageSkeleton } from '@/components/ui/PortalSkeletons';
 import {
   ArrowLeft,
   Settings,
@@ -244,12 +245,7 @@ export default function ConfigurarClientePage() {
   };
 
   if (isLoadingAuth || isLoadingClient) {
-    return (
-      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <div style={{ width: '32px', height: '32px', border: '3px solid #0284c7', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-        <p style={{ fontSize: '14px', fontWeight: 600, color: '#475569' }}>Cargando configuración del cliente...</p>
-      </div>
-    );
+    return <ConfigurarClientePageSkeleton />;
   }
 
   return (
@@ -270,7 +266,7 @@ export default function ConfigurarClientePage() {
         </div>
 
         <Link
-          href="/?tab=configuracion"
+          href="/configuracion"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -397,7 +393,7 @@ export default function ConfigurarClientePage() {
             {/* Selector Desplegable Inteligente de Consignatarios TIB (3,360) para Añadir al Matching */}
             <div ref={tibSearchRef} style={{ position: 'relative' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0c4a6e', marginBottom: '6px' }}>
-                Seleccionar del Catálogo Oficial TIB (3,360 consignatarios) para añadir:
+                Seleccionar del Catálogo Oficial TIB{tibTotal > 0 ? ` (${tibTotal.toLocaleString()} consignatarios)` : ''} para añadir:
               </label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {/* Botón Desplegable estilo Catálogo de Consignatarios */}

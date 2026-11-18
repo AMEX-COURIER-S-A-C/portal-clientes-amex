@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { authFetch } from '@/lib/portal/authFetch';
+import { AnaliticasPageSkeleton, AuditTimelineSkeleton } from '@/components/ui/PortalSkeletons';
 import {
   Users,
   Search,
@@ -487,17 +488,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     .slice(0, 3);
 
   if (isLoading && !data) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', minHeight: '400px' }}>
-        <RefreshCw style={{ width: '36px', height: '36px', color: '#ff5722', animation: 'spin 1s linear infinite' }} />
-        <p style={{ marginTop: '16px', fontSize: '15px', fontWeight: 600, color: '#374151' }}>
-          Compilando métricas y analíticas de uso en tiempo real...
-        </p>
-        <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#9ca3af' }}>
-          Consultando registros de auditoría y sesiones activas.
-        </p>
-      </div>
-    );
+    return <AnaliticasPageSkeleton />;
   }
 
   const kpis = data?.resumen_kpis || {
@@ -635,7 +626,32 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '22px',
+        width: '100%',
+        opacity: isLoading ? 0.65 : 1,
+        transition: 'opacity 0.2s ease',
+        position: 'relative',
+      }}
+    >
+      {(isLoading || isRefreshing) && (
+        <div style={{ height: '3px', width: '100%', backgroundColor: '#ffedd5', overflow: 'hidden', position: 'relative', borderRadius: '999px' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: '#ff5722',
+              borderRadius: '999px',
+              animation: 'indeterminateBar 1s ease-in-out infinite alternate',
+            }}
+          />
+        </div>
+      )}
       
       {/* 1. Header del Módulo con Controles de Tiempo y Acciones */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', backgroundColor: '#ffffff', padding: '18px 22px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -2111,10 +2127,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             {/* Modal Body / Timeline */}
             <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {isLoadingAudit ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
-                  <RefreshCw style={{ width: '24px', height: '24px', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
-                  <span style={{ fontSize: '13px' }}>Cargando eventos de auditoría...</span>
-                </div>
+                <AuditTimelineSkeleton rows={5} />
               ) : auditEvents.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {auditEvents.map(evt => {

@@ -19,6 +19,7 @@ import {
 import ExcelExportDropdown from '@/components/ExcelExportDropdown';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
 import { scrollElementToStart } from '@/lib/portal/scroll';
+import { WarehouseTableSkeletonRows } from '@/components/ui/PortalSkeletons';
 import {
   ESTADOS_DISPONIBLES,
   formatDateTimeTIB,
@@ -1187,14 +1188,7 @@ export default function WarehouseView({
 
             <tbody style={{ opacity: isSearching ? 0.55 : 1, transition: 'opacity 0.2s ease' }}>
               {isLoading && paquetes.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
-                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '28px', height: '28px', border: '3px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                      <span style={{ fontSize: '13px', fontWeight: 600 }}>Cargando paquetes desde almacén...</span>
-                    </div>
-                  </td>
-                </tr>
+                <WarehouseTableSkeletonRows rows={10} />
               ) : paquetes.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
