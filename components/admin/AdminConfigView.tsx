@@ -253,36 +253,40 @@ export default function AdminConfigView({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '18px' }}>
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#111827', margin: 0 }}>
-              Directorio de Clientes
+              {configSubTab === 'internos' ? 'Equipo Interno AMEX' : 'Directorio de Clientes'}
             </h2>
             <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
-              Crea accesos, asigna códigos de casillero y define alias para matching automático de paquetes.
+              {configSubTab === 'internos'
+                ? 'Administra usuarios laborales con acceso global de consulta al listado Warehouse.'
+                : 'Crea accesos, asigna códigos de casillero y define alias para matching automático de paquetes.'}
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              type="button"
-              onClick={onOpenAddClientModal}
-              style={{
-                backgroundColor: '#ff5722',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 18px',
-                fontSize: '13px',
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                boxShadow: '0 2px 4px rgba(255,87,34,0.25)',
-              }}
-            >
-              <UserPlus style={{ width: '15px', height: '15px' }} aria-hidden="true" />
-              <span>Agregar Cliente</span>
-            </button>
-          </div>
+          {configSubTab !== 'internos' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={onOpenAddClientModal}
+                style={{
+                  backgroundColor: '#ff5722',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 18px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(255,87,34,0.25)',
+                }}
+              >
+                <UserPlus style={{ width: '15px', height: '15px' }} aria-hidden="true" />
+                <span>Agregar Cliente</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Sub-pestañas: Usuarios Creados vs Catálogo TIB */}
