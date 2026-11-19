@@ -29,7 +29,14 @@ export async function POST(req: Request) {
   try {
     const auth = await requireAuthSession(req);
     if (!auth.ok) return auth.response;
-    const { email: cleanEmail, portalAdmin } = auth;
+    const { email: cleanEmail, portalAdmin, role, canExportExcel } = auth;
+
+    if (role === 'interno' && !canExportExcel) {
+      return NextResponse.json(
+        { error: 'Tu cuenta interna no tiene permiso habilitado para exportar listados a Excel.' },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const { scope = 'filtered', filters = {} } = body;

@@ -37,6 +37,20 @@ export interface TibCatalogClient {
   email?: string | null;
 }
 
+export interface UsuarioInternoItem {
+  id: string;
+  username: string;
+  auth_email: string;
+  nombre_completo: string;
+  cargo: string | null;
+  puede_exportar_excel: boolean;
+  activo: boolean;
+  creado_por: string | null;
+  creado_en: string;
+  actualizado_en: string;
+  ultimo_acceso?: string | null;
+}
+
 export interface ToastNotice {
   id: number;
   type: 'success' | 'error' | 'info';

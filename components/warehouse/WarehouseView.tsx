@@ -31,6 +31,8 @@ import {
 export interface WarehouseViewProps {
   userEmail?: string | null;
   isSuperadmin: boolean;
+  hasGlobalWarehouseAccess?: boolean;
+  canExportExcel?: boolean;
   paquetes: PaqueteTIB[];
   totalSystemCount: number;
   totalFilteredCount: number;
@@ -88,6 +90,8 @@ export interface WarehouseViewProps {
 export default function WarehouseView({
   userEmail,
   isSuperadmin,
+  hasGlobalWarehouseAccess = false,
+  canExportExcel = true,
   paquetes,
   totalSystemCount,
   totalFilteredCount,
@@ -393,7 +397,9 @@ export default function WarehouseView({
                         letterSpacing: '0.4px',
                       }}
                     >
-                      {isSuperadmin ? 'Catálogo de Consignatarios' : 'Mis Consignatarios Asignados'}
+                      {isSuperadmin || hasGlobalWarehouseAccess
+                        ? 'Catálogo de Consignatarios'
+                        : 'Mis Consignatarios Asignados'}
                     </span>
                     <span
                       style={{
@@ -662,26 +668,28 @@ export default function WarehouseView({
             )}
           </button>
 
-          <div className="w-auto">
-            <ExcelExportDropdown
-              userEmail={userEmail}
-              filters={{
-                wr: filterWr,
-                tracking: filterTracking,
-                consignatario: filterConsignatario,
-                tipo: filterTipo,
-                estado: filterEstado,
-                fechaTipo: filterFechaTipo,
-                fechaDesde: filterFechaDesde,
-                fechaHasta: filterFechaHasta,
-                pesoMin: filterPesoMin,
-                pesoMax: filterPesoMax,
-              }}
-              totalFilteredCount={totalFilteredCount}
-              totalSystemCount={totalSystemCount}
-              onErrorToast={onShowErrorToast}
-            />
-          </div>
+          {canExportExcel && (
+            <div className="w-auto">
+              <ExcelExportDropdown
+                userEmail={userEmail}
+                filters={{
+                  wr: filterWr,
+                  tracking: filterTracking,
+                  consignatario: filterConsignatario,
+                  tipo: filterTipo,
+                  estado: filterEstado,
+                  fechaTipo: filterFechaTipo,
+                  fechaDesde: filterFechaDesde,
+                  fechaHasta: filterFechaHasta,
+                  pesoMin: filterPesoMin,
+                  pesoMax: filterPesoMax,
+                }}
+                totalFilteredCount={totalFilteredCount}
+                totalSystemCount={totalSystemCount}
+                onErrorToast={onShowErrorToast}
+              />
+            </div>
+          )}
 
           <button
             type="button"

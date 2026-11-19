@@ -46,9 +46,19 @@ export async function sendEmail(options: SendEmailOptions) {
       : 'notificaciones@sistemaamexcourier.online';
 
   try {
+    const { isInternalStaffEmail } = await import('@/lib/portal/roles');
+    const rawRecipients = Array.isArray(options.to) ? options.to : [options.to];
+    const filteredRecipients = rawRecipients.filter(
+      (addr) => !isInternalStaffEmail(String(addr || ''))
+    );
+
+    if (filteredRecipients.length === 0) {
+      return { success: false, error: 'Las cuentas internas de usuario no reciben correos externos.' };
+    }
+
     const { data, error } = await resend.emails.send({
       from: fromAddress,
-      to: Array.isArray(options.to) ? options.to : [options.to],
+      to: filteredRecipients,
       replyTo: replyToAddress,
       subject: options.subject,
       html: options.html,
@@ -65,11 +75,10 @@ export async function sendEmail(options: SendEmailOptions) {
     try {
       const { getPortalAdmin } = await import('@/lib/supabase/portal-admin');
       const portalAdmin = getPortalAdmin();
-      const recipients = Array.isArray(options.to) ? options.to : [options.to];
       const { isSuperadminEmail } = await import('@/lib/portal/superadmin');
-      for (const toEmail of recipients) {
+      for (const toEmail of filteredRecipients) {
         const cleanTo = String(toEmail).trim().toLowerCase();
-        if (isSuperadminEmail(cleanTo)) continue;
+        if (isSuperadminEmail(cleanTo) || isInternalStaffEmail(cleanTo)) continue;
         Promise.resolve(
           portalAdmin
             .from('portal_eventos_uso')

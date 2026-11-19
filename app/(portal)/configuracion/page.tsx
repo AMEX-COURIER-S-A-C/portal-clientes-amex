@@ -9,7 +9,12 @@ import { cleanExactString, normalizeSearchText } from '@/lib/portal/keywords';
 import { usePortalSession } from '@/components/portal/PortalShell';
 import AdminConfigView from '@/components/admin/AdminConfigView';
 import AdminClientModals from '@/components/admin/AdminClientModals';
-import { ClientePortalItem, KeywordsPopoverStyle, TibCatalogClient } from '@/lib/portal/types';
+import {
+  ClientePortalItem,
+  KeywordsPopoverStyle,
+  TibCatalogClient,
+  UsuarioInternoItem,
+} from '@/lib/portal/types';
 
 export default function ConfiguracionPage() {
   const router = useRouter();
@@ -18,6 +23,10 @@ export default function ConfiguracionPage() {
   const [clientsList, setClientsList] = useState<ClientePortalItem[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
+
+  // Equipo interno AMEX
+  const [staffList, setStaffList] = useState<UsuarioInternoItem[]>([]);
+  const [isLoadingStaff, setIsLoadingStaff] = useState(true);
 
   // Formulario de nuevo cliente
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -43,8 +52,8 @@ export default function ConfiguracionPage() {
   // Estado del desplegable buscador TIB en el modal
   const [isTibDropdownOpen, setIsTibDropdownOpen] = useState(false);
 
-  // Catálogo TIB
-  const [configSubTab, setConfigSubTab] = useState<'usuarios' | 'tib'>('usuarios');
+  // Catálogo TIB y sub-pestañas
+  const [configSubTab, setConfigSubTab] = useState<'usuarios' | 'internos' | 'tib'>('usuarios');
   const [tibCatalogSearch, setTibCatalogSearch] = useState('');
   const [tibCatalogList, setTibCatalogList] = useState<TibCatalogClient[]>([]);
   const [tibCatalogTotal, setTibCatalogTotal] = useState(0);
@@ -105,12 +114,30 @@ export default function ConfiguracionPage() {
     }
   }, [user?.email, setTotalSystemCount]);
 
-  // Carga inicial de clientes, conteo del sistema y total real del catálogo TIB
+  const fetchStaffList = useCallback(async () => {
+    setIsLoadingStaff(true);
+    try {
+      const res = await authFetch('/api/usuarios-internos');
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        if (Array.isArray(json?.usuarios)) {
+          setStaffList(json.usuarios);
+        }
+      }
+    } catch (err) {
+      console.warn('Aviso al cargar usuarios_internos:', err);
+    } finally {
+      setIsLoadingStaff(false);
+    }
+  }, []);
+
+  // Carga inicial de clientes, equipo interno, conteo del sistema y total real del catálogo TIB
   const initializedRef = useRef(false);
   useEffect(() => {
     if (!isSuperadmin || initializedRef.current) return;
     initializedRef.current = true;
     fetchClientsList();
+    fetchStaffList();
 
     if (totalSystemCount === 0) {
       refreshSystemCount();
@@ -126,7 +153,7 @@ export default function ConfiguracionPage() {
         })
         .catch(() => {});
     }
-  }, [isSuperadmin, totalSystemCount, tibCatalogTotal, fetchClientsList, refreshSystemCount]);
+  }, [isSuperadmin, totalSystemCount, tibCatalogTotal, fetchClientsList, fetchStaffList, refreshSystemCount]);
 
   const resetAddClientModalState = useCallback(() => {
     setNewClientNombre('');
@@ -497,6 +524,10 @@ export default function ConfiguracionPage() {
         clientsList={clientsList}
         filteredClientsList={filteredClientsList}
         isLoadingClients={isLoadingClients}
+        staffList={staffList}
+        isLoadingStaff={isLoadingStaff}
+        onRefreshStaff={fetchStaffList}
+        showToast={showToast}
         totalSystemCount={totalSystemCount}
         totalFilteredCount={totalSystemCount}
         isSyncingAll={isSyncingAll}

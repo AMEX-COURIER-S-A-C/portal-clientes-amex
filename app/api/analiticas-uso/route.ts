@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { extractInternalUsername, isInternalStaffEmail } from '@/lib/portal/roles';
 import { cleanExactString } from '@/lib/portal/keywords';
 
 export const dynamic = 'force-dynamic';
@@ -152,17 +153,25 @@ export async function GET(req: NextRequest) {
       return all;
     };
 
-    const [clientsData, authUsers, catalogData, systemCountRes] = await Promise.all([
+    const [clientsData, authUsers, catalogData, systemCountRes, internalStaffRes] = await Promise.all([
       fetchAllClients(),
       fetchAllAuthUsers(),
       fetchFullCatalog(),
       portalAdmin
         .from('paquetes_portal')
         .select('id', { count: 'exact', head: true }),
+      portalAdmin
+        .from('usuarios_internos')
+        .select('id, username, auth_email, nombre_completo, cargo, puede_exportar_excel, activo, creado_en')
+        .order('nombre_completo', { ascending: true }),
     ]);
 
-    // Excluir cuentas de administradores para mostrar estrictamente clientes reales
-    const clients = (clientsData || []).filter((c) => !isSuperadminEmail(c.email));
+    const internalStaffRows = internalStaffRes.data || [];
+
+    // Excluir cuentas de administradores e internos para mostrar estrictamente clientes reales
+    const clients = (clientsData || []).filter(
+      (c) => !isSuperadminEmail(c.email) && !isInternalStaffEmail(c.email)
+    );
 
     const authMap = new Map<string, any>();
     for (const u of authUsers) {
@@ -270,10 +279,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: queryError?.message || 'Error al consultar eventos' }, { status: 500 });
     }
 
-    const events = (eventsData || []).filter((ev) => !isSuperadminEmail(ev.usuario_email));
-    const previousEvents = (previousEventsData || []).filter(
-      (ev) => !isSuperadminEmail(ev.usuario_email)
+    const events = (eventsData || []).filter(
+      (ev) => !isSuperadminEmail(ev.usuario_email) && !isInternalStaffEmail(ev.usuario_email)
     );
+    const previousEvents = (previousEventsData || []).filter(
+      (ev) => !isSuperadminEmail(ev.usuario_email) && !isInternalStaffEmail(ev.usuario_email)
+    );
+    const internalEvents = (eventsData || []).filter((ev) => isInternalStaffEmail(ev.usuario_email));
 
     const previousStats = {
       activos: new Set<string>(),
@@ -648,6 +660,166 @@ export async function GET(req: NextRequest) {
         ? Math.round((clientesActivados / clientesAnalitica.length) * 1000) / 10
         : 0;
 
+    // 6. Construir bloque separado de Auditoría de Equipo Interno
+    const staffByEmail = new Map<string, any>();
+    for (const s of internalStaffRows) {
+      if (s.auth_email) staffByEmail.set(String(s.auth_email).toLowerCase(), s);
+    }
+
+    const internalActivosHoy = new Set<string>();
+    const internalActivosPeriodo = new Set<string>();
+    let internalLogins = 0;
+    let internalBusquedas = 0;
+    let internalFotos = 0;
+    let internalExcels = 0;
+
+    const internalStatsMap = new Map<
+      string,
+      {
+        username: string;
+        nombre_completo: string;
+        total_eventos: number;
+        logins: number;
+        busquedas: number;
+        fotos: number;
+        excels: number;
+        filtros: number;
+        ultima_actividad: string | null;
+      }
+    >();
+
+    for (const ev of internalEvents) {
+      const authEmail = String(ev.usuario_email || '').toLowerCase();
+      if (!authEmail) continue;
+      const tipo = String(ev.tipo_evento || '').toUpperCase();
+      const evDay = limaDayKey(new Date(ev.creado_en));
+
+      internalActivosPeriodo.add(authEmail);
+      if (evDay === limaHoy) internalActivosHoy.add(authEmail);
+
+      const staffMeta = staffByEmail.get(authEmail);
+      const username =
+        staffMeta?.username ||
+        ev.detalles?.usuario_interno ||
+        extractInternalUsername(authEmail) ||
+        'interno';
+      const nombre = staffMeta?.nombre_completo || ev.nombre_cliente || `@${username}`;
+
+      let st = internalStatsMap.get(authEmail);
+      if (!st) {
+        st = {
+          username,
+          nombre_completo: nombre,
+          total_eventos: 0,
+          logins: 0,
+          busquedas: 0,
+          fotos: 0,
+          excels: 0,
+          filtros: 0,
+          ultima_actividad: ev.creado_en,
+        };
+        internalStatsMap.set(authEmail, st);
+      }
+
+      st.total_eventos++;
+      if (tipo === 'LOGIN_EXITOSO') {
+        st.logins++;
+        internalLogins++;
+      } else if (tipo === 'BUSQUEDA_INVENTARIO' || tipo === 'CONSULTA_DETALLE') {
+        st.busquedas++;
+        internalBusquedas++;
+      } else if (tipo === 'VER_FOTO_ALMACEN') {
+        st.fotos++;
+        internalFotos++;
+      } else if (tipo === 'EXPORTAR_EXCEL') {
+        st.excels++;
+        internalExcels++;
+      } else if (tipo === 'FILTRO_ESTADO') {
+        st.filtros++;
+      }
+
+      if (!st.ultima_actividad || new Date(ev.creado_en) > new Date(st.ultima_actividad)) {
+        st.ultima_actividad = ev.creado_en;
+      }
+    }
+
+    const trabajadoresAudit: any[] = [];
+    const seenInternalEmails = new Set<string>();
+
+    for (const s of internalStaffRows) {
+      const key = String(s.auth_email || '').toLowerCase();
+      seenInternalEmails.add(key);
+      const st = internalStatsMap.get(key);
+      const authInfo = authMap.get(key);
+      trabajadoresAudit.push({
+        id: s.id,
+        username: s.username,
+        auth_email: key,
+        nombre_completo: s.nombre_completo,
+        cargo: s.cargo || null,
+        puede_exportar_excel: Boolean(s.puede_exportar_excel),
+        activo: s.activo !== false,
+        eliminado: false,
+        creado_en: s.creado_en,
+        ultimo_login: authInfo?.last_sign_in_at || null,
+        ultima_actividad: st?.ultima_actividad || authInfo?.last_sign_in_at || null,
+        total_eventos: st?.total_eventos || 0,
+        logins: st?.logins || 0,
+        busquedas: st?.busquedas || 0,
+        fotos: st?.fotos || 0,
+        excels: st?.excels || 0,
+        filtros: st?.filtros || 0,
+      });
+    }
+
+    // Incluir trabajadores eliminados que conservaron actividad histórica en el período
+    for (const [authEmail, st] of internalStatsMap.entries()) {
+      if (seenInternalEmails.has(authEmail)) continue;
+      trabajadoresAudit.push({
+        id: authEmail,
+        username: st.username,
+        auth_email: authEmail,
+        nombre_completo: st.nombre_completo,
+        cargo: null,
+        puede_exportar_excel: false,
+        activo: false,
+        eliminado: true,
+        creado_en: null,
+        ultimo_login: null,
+        ultima_actividad: st.ultima_actividad,
+        total_eventos: st.total_eventos,
+        logins: st.logins,
+        busquedas: st.busquedas,
+        fotos: st.fotos,
+        excels: st.excels,
+        filtros: st.filtros,
+      });
+    }
+
+    trabajadoresAudit.sort((a, b) => b.total_eventos - a.total_eventos || a.nombre_completo.localeCompare(b.nombre_completo));
+
+    const bitacoraInterna = internalEvents.slice(0, 250).map((ev) => {
+      const authEmail = String(ev.usuario_email || '').toLowerCase();
+      const staffMeta = staffByEmail.get(authEmail);
+      const username =
+        staffMeta?.username ||
+        ev.detalles?.usuario_interno ||
+        extractInternalUsername(authEmail) ||
+        'interno';
+      return {
+        id: ev.id,
+        username,
+        auth_email: authEmail,
+        nombre: staffMeta?.nombre_completo || ev.nombre_cliente || `@${username}`,
+        cargo: staffMeta?.cargo || null,
+        tipo_evento: String(ev.tipo_evento || '').toUpperCase(),
+        detalles: ev.detalles || {},
+        dispositivo: ev.dispositivo || 'Desconocido',
+        navegador: ev.navegador || 'Desconocido',
+        creado_en: ev.creado_en,
+      };
+    });
+
     return NextResponse.json({
       periodo_dias: safeDays,
       resumen_kpis: {
@@ -694,6 +866,21 @@ export async function GET(req: NextRequest) {
       tendencia_diaria: Array.from(dailyTrendMap.values()),
       top_busquedas: topBusquedas,
       clientes: clientesAnalitica,
+      auditoria_interna: {
+        resumen: {
+          total_trabajadores: internalStaffRows.length,
+          cuentas_activas: internalStaffRows.filter((s) => s.activo !== false).length,
+          activos_hoy: internalActivosHoy.size,
+          activos_periodo: internalActivosPeriodo.size,
+          total_eventos: internalEvents.length,
+          total_logins: internalLogins,
+          total_busquedas: internalBusquedas,
+          total_fotos: internalFotos,
+          total_excels: internalExcels,
+        },
+        trabajadores: trabajadoresAudit,
+        bitacora_reciente: bitacoraInterna,
+      },
     });
   } catch (err: any) {
     console.error('[API Analíticas Excepción]:', err);

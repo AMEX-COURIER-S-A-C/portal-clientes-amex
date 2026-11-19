@@ -8,6 +8,10 @@ import { ChevronDown, Package, Settings, BarChart3, LogOut } from 'lucide-react'
 export interface PortalHeaderProps {
   user: any;
   isSuperadmin: boolean;
+  isInternalStaff?: boolean;
+  staffUsername?: string | null;
+  staffCargo?: string | null;
+  displayName?: string | null;
   activeTab?: 'warehouse' | 'configuracion' | 'analiticas';
   userMenuOpen: boolean;
   setUserMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -19,6 +23,10 @@ export interface PortalHeaderProps {
 export default function PortalHeader({
   user,
   isSuperadmin,
+  isInternalStaff = false,
+  staffUsername,
+  staffCargo,
+  displayName,
   activeTab,
   userMenuOpen,
   setUserMenuOpen,
@@ -78,7 +86,13 @@ export default function PortalHeader({
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '5px 12px', borderRadius: '6px', maxWidth: 'min(260px, 52vw)' }}
           >
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'USUARIO'}
+              Hola!{' '}
+              {displayName ||
+                user?.user_metadata?.nombre_completo ||
+                (isInternalStaff && staffUsername
+                  ? staffUsername.toUpperCase()
+                  : user?.email?.split('@')[0]?.toUpperCase()) ||
+                'USUARIO'}
             </span>
             <ChevronDown style={{ width: '14px', height: '14px', color: '#9ca3af', flexShrink: 0 }} />
           </button>
@@ -86,8 +100,19 @@ export default function PortalHeader({
           {userMenuOpen && (
             <div style={{ position: 'absolute', right: 0, marginTop: '6px', minWidth: '250px', width: 'max-content', maxWidth: 'calc(100vw - 24px)', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
               <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
-                <div>{user?.email}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#111827', fontSize: '13px' }}>
+                  <span>{isInternalStaff ? 'Equipo Interno AMEX' : 'Cuenta Conectada'}</span>
+                  {isInternalStaff && (
+                    <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '10px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                      Staff
+                    </span>
+                  )}
+                </div>
+                <div>
+                  {isInternalStaff
+                    ? `@${staffUsername || 'interno'}${staffCargo ? ` • ${staffCargo}` : ''}`
+                    : user?.email}
+                </div>
               </div>
 
               {isSuperadmin && (

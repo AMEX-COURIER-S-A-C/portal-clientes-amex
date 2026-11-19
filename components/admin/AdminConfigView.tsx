@@ -25,17 +25,27 @@ import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { cleanExactString } from '@/lib/portal/keywords';
 import { scrollElementToStart } from '@/lib/portal/scroll';
 import { ConfigTableSkeletonRows } from '@/components/ui/PortalSkeletons';
-import { ClientePortalItem, formatDateTimeTIB, TibCatalogClient } from '@/lib/portal/types';
+import InternalStaffPanel from '@/components/admin/InternalStaffPanel';
+import {
+  ClientePortalItem,
+  formatDateTimeTIB,
+  TibCatalogClient,
+  UsuarioInternoItem,
+} from '@/lib/portal/types';
 
 export interface AdminConfigViewProps {
   clientsList: ClientePortalItem[];
   filteredClientsList: ClientePortalItem[];
   isLoadingClients: boolean;
+  staffList: UsuarioInternoItem[];
+  isLoadingStaff: boolean;
+  onRefreshStaff: () => void | Promise<void>;
+  showToast: (type: 'success' | 'error' | 'info', message: string) => void;
   totalSystemCount: number;
   totalFilteredCount: number;
   isSyncingAll: boolean;
-  configSubTab: 'usuarios' | 'tib';
-  setConfigSubTab: React.Dispatch<React.SetStateAction<'usuarios' | 'tib'>>;
+  configSubTab: 'usuarios' | 'internos' | 'tib';
+  setConfigSubTab: React.Dispatch<React.SetStateAction<'usuarios' | 'internos' | 'tib'>>;
   clientSearchQuery: string;
   setClientSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   resendNotice: { type: 'success' | 'error'; message: string } | null;
@@ -65,6 +75,10 @@ export default function AdminConfigView({
   clientsList,
   filteredClientsList,
   isLoadingClients,
+  staffList,
+  isLoadingStaff,
+  onRefreshStaff,
+  showToast,
   totalSystemCount,
   totalFilteredCount,
   isSyncingAll,
@@ -183,6 +197,21 @@ export default function AdminConfigView({
           </p>
         </div>
 
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+            Equipo Interno AMEX
+          </span>
+          <div style={{ fontSize: '26px', fontWeight: 900, color: '#1d4ed8', marginTop: '4px' }}>
+            {staffList.filter((s) => s.activo).length}
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b', marginLeft: '6px' }}>
+              / {staffList.length} total
+            </span>
+          </div>
+          <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0 0' }}>
+            Trabajadores con consulta global de Warehouse.
+          </p>
+        </div>
+
         <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
@@ -282,6 +311,28 @@ export default function AdminConfigView({
 
           <button
             type="button"
+            onClick={() => setConfigSubTab('internos')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: configSubTab === 'internos' ? '#1d4ed8' : '#f3f4f6',
+              color: configSubTab === 'internos' ? '#ffffff' : '#4b5563',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <ShieldCheck style={{ width: '15px', height: '15px' }} />
+            <span>Equipo Interno AMEX ({staffList.length})</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setConfigSubTab('tib')}
             style={{
               padding: '8px 16px',
@@ -305,6 +356,16 @@ export default function AdminConfigView({
             </span>
           </button>
         </div>
+
+        {/* Contenido Sub-Pestaña 2: Equipo Interno AMEX */}
+        {configSubTab === 'internos' && (
+          <InternalStaffPanel
+            staffList={staffList}
+            isLoadingStaff={isLoadingStaff}
+            onStaffChanged={onRefreshStaff}
+            showToast={showToast}
+          />
+        )}
 
         {/* Contenido Sub-Pestaña 1: Usuarios Creados */}
         {configSubTab === 'usuarios' && (

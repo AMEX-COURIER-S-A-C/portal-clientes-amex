@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { resolveLoginIdentifier } from '@/lib/portal/roles';
 
 const PORTAL_URL =
   process.env.NEXT_PUBLIC_PORTAL_SUPABASE_URL ||
@@ -25,16 +26,35 @@ const MASTER_ANON_KEY =
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, password } = body;
+    const { email, identifier, password } = body;
+    const rawIdentifier = String(identifier || email || '').trim();
 
-    if (!email || !password) {
+    if (!rawIdentifier || !password) {
       return NextResponse.json(
-        { error: 'Por favor ingresa tu correo y contraseña.' },
+        { error: 'Por favor ingresa tu correo/usuario y contraseña.' },
         { status: 400 }
       );
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const resolved = resolveLoginIdentifier(rawIdentifier);
+    const cleanEmail = resolved.authEmail;
+
+    // Si es un usuario interno, validar primero que exista y esté activo
+    if (resolved.isInternal) {
+      const portalAdmin = getPortalAdmin();
+      const { data: staffProfile } = await portalAdmin
+        .from('usuarios_internos')
+        .select('activo, nombre_completo, username')
+        .eq('auth_email', cleanEmail)
+        .maybeSingle();
+
+      if (staffProfile && staffProfile.activo === false) {
+        return NextResponse.json(
+          { error: 'Tu cuenta interna ha sido desactivada por administración. Contacta con gerencia AMEX Courier.' },
+          { status: 403 }
+        );
+      }
+    }
 
     // 1. Cliente aislado del portal de clientes (us-west-2 Oregon)
     const portalClient = createClient(PORTAL_URL, PORTAL_ANON_KEY, {
@@ -107,7 +127,7 @@ export async function POST(req: NextRequest) {
         {
           error:
             portalError?.message === 'Invalid login credentials'
-              ? 'Correo o contraseña incorrectos. Revisa tus datos.'
+              ? 'Usuario/correo o contraseña incorrectos. Revisa tus datos.'
               : portalError?.message || 'Error al iniciar sesión.',
         },
         { status: 401 }
@@ -115,7 +135,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar si la cuenta ha sido desactivada por administración
-    if (!isSuperadminEmail(cleanEmail)) {
+    if (resolved.isInternal) {
+      const portalAdmin = getPortalAdmin();
+      const { data: staffProfile } = await portalAdmin
+        .from('usuarios_internos')
+        .select('activo')
+        .eq('auth_email', cleanEmail)
+        .maybeSingle();
+
+      if (!staffProfile || staffProfile.activo === false) {
+        return NextResponse.json(
+          { error: 'Tu cuenta interna ha sido desactivada por administración. Contacta con gerencia AMEX Courier.' },
+          { status: 403 }
+        );
+      }
+    } else if (!isSuperadminEmail(cleanEmail)) {
       const portalAdmin = getPortalAdmin();
       const { data: clientProfile } = await portalAdmin
         .from('clientes_portal')

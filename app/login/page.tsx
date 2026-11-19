@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
+import { resolveLoginIdentifier } from '@/lib/portal/roles';
 import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
 import { HalloweenBackdrop, HalloweenCornerWebs } from '@/components/themes/HalloweenBackdrop';
 import { AviationLogisticsBackdrop } from '@/components/themes/AviationLogisticsBackdrop';
@@ -55,14 +56,16 @@ export default function ClienteLoginPage() {
     setIsLoading(true);
     setErrorMessage(null);
 
-    const cleanEmail = email.trim().toLowerCase();
+    const rawInput = email.trim();
+    const resolved = resolveLoginIdentifier(rawInput);
+    const cleanEmail = resolved.authEmail;
 
     try {
-      // 1. Iniciar sesión a través de la ruta con puente de sincronización para Superadmin
+      // 1. Iniciar sesión a través de la ruta con soporte para correo (clientes/superadmin) y usuario (equipo interno)
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, password }),
+        body: JSON.stringify({ identifier: rawInput, email: cleanEmail, password }),
       });
 
       const data = await res.json();
@@ -80,8 +83,12 @@ export default function ClienteLoginPage() {
         // Telemetria de login exitoso
         trackPortalEvent({
           usuario_email: cleanEmail,
+          nombre_cliente: data.user?.user_metadata?.nombre_completo || resolved.username || '',
           tipo_evento: 'LOGIN_EXITOSO',
-          detalles: { metodo: 'api_auth_login' },
+          detalles: {
+            metodo: resolved.isInternal ? 'api_auth_login_interno' : 'api_auth_login',
+            ...(resolved.username ? { usuario_interno: resolved.username } : {}),
+          },
         });
 
         setIsTransitioningIn(true);
@@ -110,25 +117,44 @@ export default function ClienteLoginPage() {
         });
 
         if (!directError && directAuth.session) {
-          // Verificar si está activo en clientes_portal
-          const { data: profile } = await supabasePortal
-            .from('clientes_portal')
-            .select('activo')
-            .eq('email', cleanEmail)
-            .maybeSingle();
+          if (resolved.isInternal) {
+            const { data: staffProfile } = await supabasePortal
+              .from('usuarios_internos')
+              .select('activo, nombre_completo')
+              .eq('id', directAuth.user.id)
+              .maybeSingle();
 
-          if (profile && profile.activo === false) {
-            await supabasePortal.auth.signOut();
-            setErrorMessage('Tu cuenta ha sido desactivada por administración. Contacta con soporte AMEX Courier.');
-            setIsLoading(false);
-            return;
+            if (!staffProfile || staffProfile.activo === false) {
+              await supabasePortal.auth.signOut();
+              setErrorMessage('Tu cuenta interna ha sido desactivada por administración. Contacta con gerencia AMEX Courier.');
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            // Verificar si está activo en clientes_portal
+            const { data: profile } = await supabasePortal
+              .from('clientes_portal')
+              .select('activo')
+              .eq('email', cleanEmail)
+              .maybeSingle();
+
+            if (profile && profile.activo === false) {
+              await supabasePortal.auth.signOut();
+              setErrorMessage('Tu cuenta ha sido desactivada por administración. Contacta con soporte AMEX Courier.');
+              setIsLoading(false);
+              return;
+            }
           }
 
           // Telemetria de login exitoso
           trackPortalEvent({
             usuario_email: cleanEmail,
+            nombre_cliente: directAuth.user?.user_metadata?.nombre_completo || resolved.username || '',
             tipo_evento: 'LOGIN_EXITOSO',
-            detalles: { metodo: 'supabase_direct' },
+            detalles: {
+              metodo: resolved.isInternal ? 'supabase_direct_interno' : 'supabase_direct',
+              ...(resolved.username ? { usuario_interno: resolved.username } : {}),
+            },
           });
 
           setIsTransitioningIn(true);
@@ -141,7 +167,7 @@ export default function ClienteLoginPage() {
 
       setErrorMessage(
         msg === 'Invalid login credentials'
-          ? 'Correo o contraseña incorrectos. Revisa tus datos.'
+          ? 'Usuario/correo o contraseña incorrectos. Revisa tus datos.'
           : msg
       );
       setIsLoading(false);
@@ -638,11 +664,11 @@ export default function ClienteLoginPage() {
                   marginBottom: '6px',
                 }}
               >
-                Correo Electrónico
+                Correo Electrónico o Usuario
               </label>
               <div style={{ position: 'relative' }}>
                 <i
-                  className="fa-solid fa-envelope"
+                  className="fa-solid fa-user"
                   aria-hidden="true"
                   style={{
                     position: 'absolute',
@@ -655,11 +681,12 @@ export default function ClienteLoginPage() {
                 />
                 <input
                   id="login-email"
-                  type="email"
+                  type="text"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu-correo@ejemplo.com"
+                  placeholder="tu-correo@ejemplo.com o usuario.amex"
                   className="amex-input-field"
                 />
               </div>

@@ -1,16 +1,19 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { cleanExactString, sanitizePostgrestFilterTerm } from './keywords';
 import { isSuperadminEmail } from './superadmin';
+import { isInternalStaffEmail } from './roles';
 
 export interface ClientKeywordsInfo {
   isSuperadmin: boolean;
+  isInternalStaff: boolean;
+  hasGlobalWarehouseAccess: boolean;
   cleanEmail: string;
   keywords: string[];
 }
 
 /**
- * Obtiene las palabras clave y siglas asignadas a un cliente desde clientes_portal.
- * Permite que múltiples cuentas de correo compartan las mismas siglas sin conflicto.
+ * Obtiene las palabras clave y siglas asignadas a un cliente desde clientes_portal,
+ * o concede acceso global de Warehouse a cuentas Superadmin y usuarios internos activos.
  */
 export async function getClientKeywords(
   portalAdmin: SupabaseClient,
@@ -18,12 +21,41 @@ export async function getClientKeywords(
 ): Promise<ClientKeywordsInfo> {
   const cleanEmail = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
   if (!cleanEmail) {
-    return { isSuperadmin: false, cleanEmail: '', keywords: [] };
+    return {
+      isSuperadmin: false,
+      isInternalStaff: false,
+      hasGlobalWarehouseAccess: false,
+      cleanEmail: '',
+      keywords: [],
+    };
   }
 
   const isSuperadmin = isSuperadminEmail(cleanEmail);
   if (isSuperadmin) {
-    return { isSuperadmin: true, cleanEmail, keywords: [] };
+    return {
+      isSuperadmin: true,
+      isInternalStaff: false,
+      hasGlobalWarehouseAccess: true,
+      cleanEmail,
+      keywords: [],
+    };
+  }
+
+  if (isInternalStaffEmail(cleanEmail)) {
+    const { data: staff } = await portalAdmin
+      .from('usuarios_internos')
+      .select('activo')
+      .eq('auth_email', cleanEmail)
+      .maybeSingle();
+
+    const isActiveStaff = Boolean(staff && staff.activo !== false);
+    return {
+      isSuperadmin: false,
+      isInternalStaff: isActiveStaff,
+      hasGlobalWarehouseAccess: isActiveStaff,
+      cleanEmail: isActiveStaff ? cleanEmail : '',
+      keywords: [],
+    };
   }
 
   const { data: profile } = await portalAdmin
@@ -50,18 +82,23 @@ export async function getClientKeywords(
     }
   }
 
-  return { isSuperadmin: false, cleanEmail, keywords: validKeywords };
+  return {
+    isSuperadmin: false,
+    isInternalStaff: false,
+    hasGlobalWarehouseAccess: false,
+    cleanEmail,
+    keywords: validKeywords,
+  };
 }
 
 /**
  * Aplica el filtro dinámico de cliente a cualquier consulta de paquetes_portal en Supabase.
- * - Si es Superadmin: acceso global irrestricto a todos los paquetes.
- * - Si tiene siglas/palabras clave asignadas: muestra los paquetes donde usuario_email sea su correo
- *   O donde nombre_consignatario coincida con cualquiera de sus siglas (acceso multi-cuenta compartido).
+ * - Si es Superadmin o usuario interno activo: acceso global irrestricto a todos los paquetes.
+ * - Si tiene siglas/palabras clave asignadas: muestra los paquetes donde nombre_consignatario coincida con sus siglas.
  * - Si no tiene palabras clave: filtra por su usuario_email.
  */
 export function applyClientScopeFilter(query: any, info: ClientKeywordsInfo): any {
-  if (info.isSuperadmin) {
+  if (info.isSuperadmin || info.hasGlobalWarehouseAccess) {
     return query;
   }
 

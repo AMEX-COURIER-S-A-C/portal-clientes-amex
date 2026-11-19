@@ -43,7 +43,15 @@ function readSavedWarehouseState(): SavedWarehouseState {
 }
 
 export default function WarehousePage() {
-  const { user, isSuperadmin, totalSystemCount, setTotalSystemCount, showToast } = usePortalSession();
+  const {
+    user,
+    isSuperadmin,
+    isInternalStaff,
+    canExportExcel,
+    totalSystemCount,
+    setTotalSystemCount,
+    showToast,
+  } = usePortalSession();
 
   const initialSaved = useMemo(() => readSavedWarehouseState(), []);
 
@@ -684,6 +692,8 @@ export default function WarehousePage() {
       <WarehouseView
         userEmail={user?.email}
         isSuperadmin={isSuperadmin}
+        hasGlobalWarehouseAccess={isSuperadmin || isInternalStaff}
+        canExportExcel={canExportExcel}
         paquetes={paquetes}
         totalSystemCount={totalSystemCount}
         totalFilteredCount={totalFilteredCount}

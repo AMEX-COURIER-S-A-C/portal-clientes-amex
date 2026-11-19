@@ -3,8 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { authFetch } from '@/lib/portal/authFetch';
 import { AnaliticasPageSkeleton, AuditTimelineSkeleton } from '@/components/ui/PortalSkeletons';
+import InternalAuditSection, { InternalAuditData } from '@/components/analytics/InternalAuditSection';
 import {
   Users,
+  ShieldCheck,
   Search,
   Image as ImageIcon,
   FileSpreadsheet,
@@ -136,6 +138,7 @@ interface AnalyticsData {
   comparativa?: { periodo_anterior: ComparativaPeriodo };
   conversion_correos?: ConversionCorreos;
   distribucion?: DistribucionData;
+  auditoria_interna?: InternalAuditData;
 }
 
 interface EventoAuditoria {
@@ -156,6 +159,7 @@ interface AnalyticsDashboardProps {
 }
 
 export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: AnalyticsDashboardProps) {
+  const [analyticsSectionTab, setAnalyticsSectionTab] = useState<'clientes' | 'interno'>('clientes');
   const [days, setDays] = useState<number>(30);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -783,6 +787,73 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
         </div>
       )}
 
+      {/* Selector de Apartado: Clientes vs Auditoría Equipo Interno */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setAnalyticsSectionTab('clientes')}
+          style={{
+            padding: '9px 16px',
+            borderRadius: '8px',
+            border: analyticsSectionTab === 'clientes' ? '1px solid #ff5722' : '1px solid #cbd5e1',
+            backgroundColor: analyticsSectionTab === 'clientes' ? '#ff5722' : '#ffffff',
+            color: analyticsSectionTab === 'clientes' ? '#ffffff' : '#334155',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '7px',
+            boxShadow: analyticsSectionTab === 'clientes' ? '0 2px 6px rgba(255,87,34,0.25)' : '0 1px 2px rgba(0,0,0,0.04)',
+          }}
+        >
+          <Users style={{ width: '15px', height: '15px' }} />
+          <span>Analíticas de Clientes ({kpis.total_clientes})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAnalyticsSectionTab('interno')}
+          style={{
+            padding: '9px 16px',
+            borderRadius: '8px',
+            border: analyticsSectionTab === 'interno' ? '1px solid #1d4ed8' : '1px solid #cbd5e1',
+            backgroundColor: analyticsSectionTab === 'interno' ? '#1d4ed8' : '#ffffff',
+            color: analyticsSectionTab === 'interno' ? '#ffffff' : '#334155',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '7px',
+            boxShadow: analyticsSectionTab === 'interno' ? '0 2px 6px rgba(29,78,216,0.25)' : '0 1px 2px rgba(0,0,0,0.04)',
+          }}
+        >
+          <ShieldCheck style={{ width: '15px', height: '15px' }} />
+          <span>
+            Auditoría Equipo Interno ({data?.auditoria_interna?.resumen?.total_trabajadores ?? 0})
+          </span>
+          {(data?.auditoria_interna?.resumen?.total_eventos ?? 0) > 0 && (
+            <span
+              style={{
+                backgroundColor: analyticsSectionTab === 'interno' ? 'rgba(255,255,255,0.22)' : '#eff6ff',
+                color: analyticsSectionTab === 'interno' ? '#ffffff' : '#1d4ed8',
+                padding: '1px 7px',
+                borderRadius: '999px',
+                fontSize: '11px',
+                fontWeight: 800,
+              }}
+            >
+              {data?.auditoria_interna?.resumen?.total_eventos} eventos
+            </span>
+          )}
+        </button>
+      </div>
+
+      {analyticsSectionTab === 'interno' ? (
+        <InternalAuditSection data={data?.auditoria_interna} days={days} />
+      ) : (
+        <>
       {/* 2. Tarjetas Ejecutivas de KPIs (6 Indicadores en 1 Fila en Escritorio) */}
       <div className="analytics-kpi-grid">
         {[
@@ -2304,6 +2375,8 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
     </div>

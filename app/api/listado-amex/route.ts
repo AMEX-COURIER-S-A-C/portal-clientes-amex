@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { requireAuthSession } from '@/lib/supabase/auth-guard';
-import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getClientKeywords } from '@/lib/portal/clientFilter';
 import { sanitizePostgrestFilterTerm } from '@/lib/portal/keywords';
 
@@ -19,7 +18,7 @@ export async function GET(req: Request) {
     const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 50, 1), 500);
     const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
 
-    const isRegularClient = !isSuperadminEmail(email);
+    const isRegularClient = auth.role === 'cliente';
 
     // Si es un cliente regular, consultar directamente la tabla pre-calculada amex_portal_clientes
     // filtrando por las palabras clave del cliente (evita el truncamiento a 1,000 filas de paquetes_portal)

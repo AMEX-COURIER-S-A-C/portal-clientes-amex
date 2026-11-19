@@ -4,14 +4,27 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { usePathname, useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import { authFetch } from '@/lib/portal/authFetch';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import {
+  extractInternalUsername,
+  getStaticRoleFromEmail,
+  isInternalStaffEmail,
+  type PortalRole,
+} from '@/lib/portal/roles';
 import { ToastNotice } from '@/lib/portal/types';
 import PortalHeader from '@/components/warehouse/PortalHeader';
 import { PortalEntryShellSkeleton } from '@/components/ui/PortalSkeletons';
 
 interface PortalSessionContextValue {
   user: any;
+  role: PortalRole;
   isSuperadmin: boolean;
+  isInternalStaff: boolean;
+  canExportExcel: boolean;
+  staffUsername: string | null;
+  staffCargo: string | null;
+  displayName: string | null;
   totalSystemCount: number;
   setTotalSystemCount: React.Dispatch<React.SetStateAction<number>>;
   showToast: (type: 'success' | 'error' | 'info', message: string) => void;
@@ -39,13 +52,21 @@ export default function PortalShell({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const [user, setUser] = useState<any | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [verifiedRole, setVerifiedRole] = useState<PortalRole | null>(null);
+  const [canExportExcel, setCanExportExcel] = useState<boolean>(true);
+  const [staffUsername, setStaffUsername] = useState<string | null>(null);
+  const [staffCargo, setStaffCargo] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [totalSystemCount, setTotalSystemCount] = useState<number>(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<ToastNotice | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isSuperadmin = isSuperadminEmail(user?.email);
+  const staticRole = getStaticRoleFromEmail(user?.email);
+  const role: PortalRole = verifiedRole ?? staticRole;
+  const isSuperadmin = role === 'superadmin' && isSuperadminEmail(user?.email);
+  const isInternalStaff = role === 'interno';
 
   const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     if (toastTimerRef.current) {
@@ -110,6 +131,54 @@ export default function PortalShell({ children }: { children: React.ReactNode })
       // Ignorar si localStorage no está accesible
     }
 
+    async function verifyUserProfile(sessionUser: any) {
+      const email = sessionUser?.email || '';
+      const isInternal = isInternalStaffEmail(email);
+
+      // Fail-closed para exportación Excel en cuentas internas hasta confirmar permiso en servidor
+      if (isInternal) {
+        setCanExportExcel(false);
+        setStaffUsername(extractInternalUsername(email) || sessionUser?.user_metadata?.username || null);
+        setDisplayName(sessionUser?.user_metadata?.nombre_completo || null);
+        setStaffCargo(sessionUser?.user_metadata?.cargo || null);
+      } else {
+        setCanExportExcel(true);
+        setStaffUsername(null);
+        setStaffCargo(null);
+        setDisplayName(sessionUser?.user_metadata?.nombre_completo || null);
+      }
+
+      if (!isInternal) {
+        setVerifiedRole(getStaticRoleFromEmail(email));
+        return true;
+      }
+
+      try {
+        const res = await authFetch('/api/auth/perfil');
+        if (!isMounted) return false;
+        if (res.status === 401 || res.status === 403) {
+          await supabasePortal.auth.signOut();
+          setUser(null);
+          setIsAuthChecking(true);
+          router.replace('/login');
+          return false;
+        }
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          if (json?.ok && isMounted) {
+            setVerifiedRole(json.role);
+            setCanExportExcel(Boolean(json.canExportExcel));
+            setStaffUsername(json.username || extractInternalUsername(email) || null);
+            setDisplayName(json.nombre_completo || sessionUser?.user_metadata?.nombre_completo || null);
+            setStaffCargo(json.cargo || null);
+          }
+        }
+      } catch {
+        // Mantener estado conservador si hay error transitorio de red
+      }
+      return true;
+    }
+
     async function loadSession() {
       const {
         data: { session },
@@ -121,7 +190,10 @@ export default function PortalShell({ children }: { children: React.ReactNode })
         return;
       }
       setUser(session.user);
-      setIsAuthChecking(false);
+      const ok = await verifyUserProfile(session.user);
+      if (ok && isMounted) {
+        setIsAuthChecking(false);
+      }
     }
     loadSession();
 
@@ -131,11 +203,14 @@ export default function PortalShell({ children }: { children: React.ReactNode })
       if (!isMounted) return;
       if (event === 'SIGNED_OUT' || !session) {
         setUser(null);
+        setVerifiedRole(null);
         setIsAuthChecking(true);
         router.replace('/login');
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         setUser(session.user);
-        setIsAuthChecking(false);
+        verifyUserProfile(session.user).then((ok) => {
+          if (ok && isMounted) setIsAuthChecking(false);
+        });
       }
     });
 
@@ -156,7 +231,19 @@ export default function PortalShell({ children }: { children: React.ReactNode })
 
   return (
     <PortalSessionContext.Provider
-      value={{ user, isSuperadmin, totalSystemCount, setTotalSystemCount, showToast }}
+      value={{
+        user,
+        role,
+        isSuperadmin,
+        isInternalStaff,
+        canExportExcel,
+        staffUsername,
+        staffCargo,
+        displayName,
+        totalSystemCount,
+        setTotalSystemCount,
+        showToast,
+      }}
     >
       <div
         className="amex-client-portal w-full flex-1 flex flex-col"
@@ -172,6 +259,10 @@ export default function PortalShell({ children }: { children: React.ReactNode })
         <PortalHeader
           user={user}
           isSuperadmin={isSuperadmin}
+          isInternalStaff={isInternalStaff}
+          staffUsername={staffUsername}
+          staffCargo={staffCargo}
+          displayName={displayName}
           userMenuOpen={userMenuOpen}
           setUserMenuOpen={setUserMenuOpen}
           userMenuRef={userMenuRef}

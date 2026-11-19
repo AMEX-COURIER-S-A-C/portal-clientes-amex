@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuthSession(req);
     if (!auth.ok) return auth.response;
-    const { email: cleanEmail, portalAdmin } = auth;
+    const { email: cleanEmail, portalAdmin, role, internalProfile } = auth;
 
     if (isSuperadminEmail(cleanEmail)) {
       // Ignorar silenciosamente las acciones de administradores
@@ -68,11 +68,24 @@ export async function POST(req: NextRequest) {
     const forwardedFor = req.headers.get('x-forwarded-for');
     const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : 'Anonimizada';
 
+    const baseDetalles = typeof detalles === 'object' && detalles !== null ? detalles : {};
+    const enrichedDetalles =
+      role === 'interno' && internalProfile
+        ? { ...baseDetalles, usuario_interno: internalProfile.username, rol: 'interno' }
+        : baseDetalles;
+
+    const resolvedName =
+      role === 'interno' && internalProfile?.nombre_completo
+        ? internalProfile.nombre_completo
+        : nombre_cliente
+          ? String(nombre_cliente).trim()
+          : null;
+
     const { error } = await portalAdmin.from('portal_eventos_uso').insert({
       usuario_email: cleanEmail,
-      nombre_cliente: nombre_cliente ? String(nombre_cliente).trim() : null,
+      nombre_cliente: resolvedName,
       tipo_evento: cleanTipo,
-      detalles: typeof detalles === 'object' && detalles !== null ? detalles : {},
+      detalles: enrichedDetalles,
       dispositivo,
       navegador,
       ip_anonimizada: ip.replace(/\.\d+$/, '.xxx'), // Máscara de privacidad GDPR/ISO
