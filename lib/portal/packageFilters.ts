@@ -1,4 +1,5 @@
 import { ClientKeywordsInfo, applyClientScopeFilter } from './clientFilter';
+import { parseLimaDateRangeBound } from './limaTime';
 
 export interface PackageQueryFilters {
   wr?: string;
@@ -55,20 +56,16 @@ export function applyPackageQueryFilters(
 
   const colFecha = fechaTipo === 'actualizado_en' ? 'actualizado_en' : 'creado_en';
   if (fechaDesde && typeof fechaDesde === 'string' && fechaDesde.trim()) {
-    try {
-      const d = new Date(`${fechaDesde.trim()}T00:00:00`);
-      if (!isNaN(d.getTime())) {
-        q = q.gte(colFecha, d.toISOString());
-      }
-    } catch (_) {}
+    const startIso = parseLimaDateRangeBound(fechaDesde, 'start');
+    if (startIso) {
+      q = q.gte(colFecha, startIso);
+    }
   }
   if (fechaHasta && typeof fechaHasta === 'string' && fechaHasta.trim()) {
-    try {
-      const d = new Date(`${fechaHasta.trim()}T23:59:59.999`);
-      if (!isNaN(d.getTime())) {
-        q = q.lte(colFecha, d.toISOString());
-      }
-    } catch (_) {}
+    const endIso = parseLimaDateRangeBound(fechaHasta, 'end');
+    if (endIso) {
+      q = q.lte(colFecha, endIso);
+    }
   }
 
   if (pesoMin !== undefined && String(pesoMin).trim() !== '' && !isNaN(Number(pesoMin))) {

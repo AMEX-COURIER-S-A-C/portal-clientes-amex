@@ -1,3 +1,5 @@
+import { formatLimaDateForInput, formatLimaDateTimeParts } from '@/lib/portal/limaTime';
+
 export interface PaqueteTIB {
   id: string;
   numero_recibo_bodega: string;
@@ -96,24 +98,11 @@ export const TIPOS_EMPAQUE = ['CAJA', 'SOBRE', 'BOLSA'] as const;
 export const ESTADOS_DISPONIBLES = ['RECIBIDO', 'ENVIADO', 'ENTREGADO'] as const;
 
 export function formatDateForInput(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return formatLimaDateForInput(d);
 }
 
 export function formatDateTimeTIB(isoString?: string | null): { date: string; time: string } {
-  if (!isoString) return { date: '—', time: '' };
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return { date: '—', time: '' };
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const date = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    return { date, time };
-  } catch {
-    return { date: '—', time: '' };
-  }
+  return formatLimaDateTimeParts(isoString);
 }
 
 export function getEstadoTexto(pkg: PaqueteTIB): string {

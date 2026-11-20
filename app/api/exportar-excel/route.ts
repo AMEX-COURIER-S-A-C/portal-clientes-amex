@@ -2,27 +2,14 @@ import { NextResponse } from 'next/server';
 import { requireAuthSession } from '@/lib/supabase/auth-guard';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 import { applyPackageQueryFilters } from '@/lib/portal/packageFilters';
+import { formatLimaDateTimeString } from '@/lib/portal/limaTime';
 import writeXlsxFile from 'write-excel-file/node';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Hasta 60 segundos para descargas grandes
 
 function formatFecha(isoString?: string | null): string {
-  if (!isoString) return '—';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return '—';
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const dia = pad(d.getDate());
-    const mes = pad(d.getMonth() + 1);
-    const anio = d.getFullYear();
-    const hora = pad(d.getHours());
-    const min = pad(d.getMinutes());
-    const seg = pad(d.getSeconds());
-    return `${dia}/${mes}/${anio} ${hora}:${min}:${seg}`;
-  } catch {
-    return '—';
-  }
+  return formatLimaDateTimeString(isoString);
 }
 
 export async function POST(req: Request) {

@@ -7,7 +7,8 @@ import { authFetch } from '@/lib/portal/authFetch';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
 import { usePortalSession } from '@/components/portal/PortalShell';
 import WarehouseView from '@/components/warehouse/WarehouseView';
-import { formatDateForInput, PaqueteTIB } from '@/lib/portal/types';
+import { PaqueteTIB } from '@/lib/portal/types';
+import { getLimaDatePresetRange } from '@/lib/portal/limaTime';
 
 const PhotoLightboxModal = dynamic(() => import('@/components/warehouse/PhotoLightboxModal'), {
   ssr: false,
@@ -521,53 +522,9 @@ export default function WarehousePage() {
 
   const applyDatePreset = (preset: string) => {
     setDatePreset(preset);
-    const now = new Date();
-
-    if (preset === 'all') {
-      setFilterFechaDesde('');
-      setFilterFechaHasta('');
-      return;
-    }
-    if (preset === 'today') {
-      const todayStr = formatDateForInput(now);
-      setFilterFechaDesde(todayStr);
-      setFilterFechaHasta(todayStr);
-      return;
-    }
-    if (preset === 'yesterday') {
-      const yest = new Date(now);
-      yest.setDate(yest.getDate() - 1);
-      const yestStr = formatDateForInput(yest);
-      setFilterFechaDesde(yestStr);
-      setFilterFechaHasta(yestStr);
-      return;
-    }
-    if (preset === '7days') {
-      const start = new Date(now);
-      start.setDate(start.getDate() - 6);
-      setFilterFechaDesde(formatDateForInput(start));
-      setFilterFechaHasta(formatDateForInput(now));
-      return;
-    }
-    if (preset === '30days') {
-      const start = new Date(now);
-      start.setDate(start.getDate() - 29);
-      setFilterFechaDesde(formatDateForInput(start));
-      setFilterFechaHasta(formatDateForInput(now));
-      return;
-    }
-    if (preset === 'thisMonth') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      setFilterFechaDesde(formatDateForInput(start));
-      setFilterFechaHasta(formatDateForInput(now));
-      return;
-    }
-    if (preset === 'lastMonth') {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0);
-      setFilterFechaDesde(formatDateForInput(start));
-      setFilterFechaHasta(formatDateForInput(end));
-    }
+    const { desde, hasta } = getLimaDatePresetRange(preset);
+    setFilterFechaDesde(desde);
+    setFilterFechaHasta(hasta);
   };
 
   const activeFiltersCount = useMemo(() => {
