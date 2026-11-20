@@ -74,6 +74,19 @@ const TIB_URL = process.env.TIB_API_URL || 'https://www.tibcourier.com/api/list-
 const TIB_EMAIL = process.env.TIB_API_EMAIL || '';
 const TIB_PASSWORD = process.env.TIB_API_PASSWORD || '';
 
+// TIB v2 (Cargo System - api.tibgrupo.com): se activa automáticamente si TIB_V2_EMAIL y TIB_V2_PASSWORD están definidos.
+const TIB_V2_BASE_URL = (process.env.TIB_V2_API_URL || 'https://api.tibgrupo.com').trim().replace(/\/+$/, '');
+const TIB_V2_EMAIL = (process.env.TIB_V2_EMAIL || '').trim();
+const TIB_V2_PASSWORD = (process.env.TIB_V2_PASSWORD || '').trim();
+const USE_TIB_V2 = Boolean(TIB_V2_EMAIL && TIB_V2_PASSWORD);
+const TIB_V2_EXPRESS_LOOKBACK_DAYS = Math.max(1, parseInt(process.env.TIB_V2_EXPRESS_LOOKBACK_DAYS || '7', 10));
+const DISABLE_STARTUP_RECOVERY_EMAILS = String(process.env.DISABLE_STARTUP_RECOVERY_EMAILS || '').toLowerCase() === 'true';
+const DISABLE_EMAIL_NOTIFICATIONS = String(process.env.DISABLE_EMAIL_NOTIFICATIONS || '').toLowerCase() === 'true';
+
+const TIB_V2_SYNC_STATUSES = ['RECEIVED', 'IN_TRANSIT', 'TEMP_ASSIGNED', 'ASSIGNED', 'DELIVERED'];
+const AUTHORIZED_PHOTO_HOSTS = new Set(['www.tibgrupo.com', 'www.tibcourier.com']);
+let tibV2Session = null; // { token, refresh, obtainedAt }
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const rawResendFrom = process.env.RESEND_FROM_EMAIL || 'notificaciones@sistemaamexcourier.online';
 const RESEND_FROM = rawResendFrom.includes('<') && rawResendFrom.includes('>')
@@ -168,9 +181,205 @@ function escapeHtml(val) {
 function formatShortDate(fecStr) {
   const s = String(fecStr || '').trim();
   if (!s) return '—';
+  // Si viene en ISO-8601 con zona horaria (ej. Cargo System UTC "2026-11-20T17:17:50.707Z"), formatear en hora Lima
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      const parts = new Intl.DateTimeFormat('es-PE', {
+        timeZone: 'America/Lima',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(d);
+      const get = (t) => parts.find((p) => p.type === t)?.value || '00';
+      return `${get('day')}/${get('month')} ${get('hour')}:${get('minute')}`;
+    }
+  }
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
   if (!m) return s;
   return `${m[3]}/${m[2]} ${m[4]}:${m[5]}`;
+}
+
+function cleanNullableText(val) {
+  if (val === null || val === undefined) return null;
+  const trimmed = String(val).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === 'null' || lower === 'undefined') return null;
+  return trimmed;
+}
+
+function mapCargoStatusToPortalStatus(rawStatus) {
+  const norm = String(rawStatus || '').trim().toUpperCase();
+  if (norm === 'DELIVERED' || norm === 'ENTREGADO') return 'ENTREGADO';
+  if (
+    norm === 'IN_TRANSIT' ||
+    norm === 'TEMP_ASSIGNED' ||
+    norm === 'ASSIGNED' ||
+    norm === 'ENVIADO' ||
+    norm === 'SHIPPED'
+  ) {
+    return 'ENVIADO';
+  }
+  return 'RECIBIDO';
+}
+
+function normalizeCargoPhotoUrls(rawPhotoUrl) {
+  const clean = cleanNullableText(rawPhotoUrl);
+  if (!clean) return null;
+  const out = [];
+  for (const part of clean.split(',')) {
+    const candidate = cleanNullableText(part);
+    if (!candidate || candidate.toLowerCase().includes('sin_imagen')) continue;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'https:' && AUTHORIZED_PHOTO_HOSTS.has(parsed.hostname.toLowerCase())) {
+        if (!out.includes(candidate)) out.push(candidate);
+      }
+    } catch {
+      // Ignorar URL inválida
+    }
+  }
+  return out.length > 0 ? out.join(',') : null;
+}
+
+function formatDateYmdUtc(date) {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+async function tibV2Login() {
+  const res = await fetch(`${TIB_V2_BASE_URL}/user/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: TIB_V2_EMAIL, password: TIB_V2_PASSWORD }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} al autenticar en TIB v2 (/user/login)`);
+  }
+  const json = await res.json();
+  if (!json?.token) {
+    throw new Error('TIB v2 /user/login no devolvió token JWT');
+  }
+  tibV2Session = {
+    token: json.token,
+    refresh: json.refresh || null,
+    obtainedAt: Date.now(),
+  };
+  return tibV2Session;
+}
+
+async function tibV2RefreshOrRelogin() {
+  if (tibV2Session?.refresh) {
+    try {
+      const res = await fetch(`${TIB_V2_BASE_URL}/user/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: tibV2Session.refresh }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.token) {
+          tibV2Session = {
+            token: json.token,
+            refresh: json.refresh || tibV2Session.refresh,
+            obtainedAt: Date.now(),
+          };
+          return tibV2Session;
+        }
+      }
+    } catch {
+      // Fallback a re-login completo
+    }
+  }
+  tibV2Session = null;
+  return tibV2Login();
+}
+
+async function tibV2AuthorizedFetch(pathWithQuery, maxRetries = 3) {
+  const url = `${TIB_V2_BASE_URL}${pathWithQuery}`;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (!tibV2Session?.token) {
+        await tibV2Login();
+      }
+      let res = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${tibV2Session.token}` },
+        signal: AbortSignal.timeout(45000),
+      });
+      if (res.status === 401) {
+        await tibV2RefreshOrRelogin();
+        res = await fetch(url, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${tibV2Session.token}` },
+          signal: AbortSignal.timeout(45000),
+        });
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} al consultar TIB v2 (${pathWithQuery})`);
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxRetries && isRetryableTibError(err)) {
+        const backoffMs = 2000 * attempt;
+        console.warn(`[TIB-MIRROR ⚠️] Error temporal consultando TIB v2 (intento ${attempt}/${maxRetries}): ${err.message}. Reintentando en ${backoffMs / 1000}s...`);
+        await sleep(backoffMs);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function fetchTibV2Status(cargoStatus, { startDate, endDate } = {}) {
+  const params = new URLSearchParams();
+  if (cargoStatus) params.set('status', cargoStatus);
+  if (startDate) params.set('startDate', startDate);
+  if (endDate) params.set('endDate', endDate);
+  const qs = params.toString();
+  const res = await tibV2AuthorizedFetch(`/warehouse/warehouse/find-all-warehouse${qs ? `?${qs}` : ''}`);
+  const json = await res.json();
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  return rows.map((row) => {
+    const idDigits = String(row?.id ?? '').replace(/\D/g, '');
+    const numericId = idDigits ? Number.parseInt(idDigits, 10) : null;
+    const statusPortal = mapCargoStatusToPortalStatus(row?.status || cargoStatus);
+    const tracking = cleanNullableText(row?.tracking) || cleanNullableText(row?.secondTracking);
+    const nclient = cleanNullableText(row?.nameClient) || cleanNullableText(row?.nameConsignee) || '';
+    const rawWeight = cleanNullableText(row?.weight);
+    const parsedWeight = rawWeight !== null ? Number.parseFloat(rawWeight.replace(',', '.')) : 0;
+    const imgUrl = normalizeCargoPhotoUrls(row?.photoUrl);
+
+    return {
+      _source: 'tib_v2',
+      _numericId: numericId,
+      wr: idDigits,
+      seqwr: idDigits,
+      tracking,
+      nclient,
+      iclient: row?.idClient != null ? String(row.idClient) : '',
+      container: cleanNullableText(row?.container) || '',
+      description: cleanNullableText(row?.description) || '',
+      weight: Number.isFinite(parsedWeight) && parsedWeight >= 0 ? parsedWeight : 0,
+      rack: cleanNullableText(row?.rack) || '',
+      img: imgUrl,
+      ticket: numericId ? `tibv2://receipt/${numericId}` : null,
+      status: statusPortal,
+      _fetchedStatus: statusPortal,
+      fecRegister: cleanNullableText(row?.dateRegister) || null,
+      fecModify: cleanNullableText(row?.dateModify) || null,
+    };
+  });
 }
 
 function sleep(ms) {
@@ -1152,12 +1361,35 @@ async function runMirrorSyncCycle() {
     }
 
     let orderedInput = [];
-    if (isFullSweep) {
+    if (USE_TIB_V2) {
+      if (isFullSweep) {
+        const statusGroups = await Promise.all(
+          TIB_V2_SYNC_STATUSES.map(async (st) => ({
+            status: st,
+            items: await fetchTibV2Status(st),
+          }))
+        );
+        const summary = statusGroups.map((g) => `${g.items.length} ${g.status}`).join(', ');
+        console.log(`[TIB-MIRROR] TIB v2 API reporta (Completo): ${summary}.`);
+        for (const g of statusGroups) {
+          orderedInput.push(...g.items);
+        }
+      } else {
+        const now = new Date();
+        const start = new Date(now.getTime() - TIB_V2_EXPRESS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+        const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        const startDate = formatDateYmdUtc(start);
+        const endDate = formatDateYmdUtc(end);
+        const recibidos = await fetchTibV2Status('RECEIVED', { startDate, endDate });
+        console.log(`[TIB-MIRROR] TIB v2 API reporta (Express ${startDate}..${endDate}): ${recibidos.length} RECEIVED.`);
+        orderedInput = recibidos;
+      }
+    } else if (isFullSweep) {
       const [recibidos, enviados, entregados] = await Promise.all([
-      fetchTibStatus('RECIBIDO'),
-      fetchTibStatus('ENVIADO'),
-      fetchTibStatus('ENTREGADO'),
-    ]);
+        fetchTibStatus('RECIBIDO'),
+        fetchTibStatus('ENVIADO'),
+        fetchTibStatus('ENTREGADO'),
+      ]);
 
       console.log(`[TIB-MIRROR] TIB API reporta (Completo): ${recibidos.length} recibidos, ${enviados.length} enviados, ${entregados.length} entregados.`);
       orderedInput = [...recibidos, ...enviados, ...entregados];
@@ -1222,7 +1454,11 @@ async function runMirrorSyncCycle() {
             .map((p) => (p.startsWith('http') ? p : `${TIB_MEDIA_BASE_URL}${p.replace(/^\/+/, '')}`))
             .join(',')
         : null;
-      const fullTicketUrl = item.ticket ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}` : null;
+      const fullTicketUrl = item.ticket
+        ? item.ticket.startsWith('tibv2://') || item.ticket.startsWith('http')
+          ? item.ticket
+          : `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}`
+        : null;
       const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
 
       let parsedDate = new Date().toISOString();
@@ -1262,6 +1498,51 @@ async function runMirrorSyncCycle() {
       });
     }
 
+    // 3.B. En TIB v2 (arranque inicial o barrido completo), cruzar con paquetes_portal existentes
+    // para preservar fotos históricas, timestamps originales y estados superiores, escribiendo solo deltas reales.
+    const existingDbByWr = new Map();
+    if (USE_TIB_V2 && processedWrsMap.size > 0 && (isInitialRun || isFullSweep)) {
+      const wrKeys = Array.from(processedWrsMap.keys());
+      const LOOKUP_CHUNK = 500;
+      for (let i = 0; i < wrKeys.length; i += LOOKUP_CHUNK) {
+        const slice = wrKeys.slice(i, i + LOOKUP_CHUNK);
+        const { data: existingRows } = await sb
+          .from('paquetes_portal')
+          .select('numero_recibo_bodega, nombre_consignatario, tracking, peso_kg, tipo_empaque, tib_imagen_url, tib_ticket_pdf_url, estado_tib, usuario_email, creado_en, ubicacion_almacen')
+          .in('numero_recibo_bodega', slice);
+
+        for (const row of existingRows || []) {
+          existingDbByWr.set(row.numero_recibo_bodega, row);
+        }
+      }
+
+      for (const [canonicalWr, entry] of processedWrsMap.entries()) {
+        const existing = existingDbByWr.get(canonicalWr);
+        if (!existing) continue;
+
+        if (!entry.record.tib_imagen_url && existing.tib_imagen_url) {
+          entry.record.tib_imagen_url = existing.tib_imagen_url;
+        }
+        if (existing.creado_en) {
+          entry.record.creado_en = existing.creado_en;
+        }
+        const existingStatus = String(existing.estado_tib || '').trim().toUpperCase();
+        if ((STATUS_PRIORITY[existingStatus] || 0) > entry.priority) {
+          entry.record.estado_tib = existingStatus;
+          entry.statusTib = existingStatus;
+          entry.priority = STATUS_PRIORITY[existingStatus] || entry.priority;
+        }
+        const existingOwner = String(existing.usuario_email || '').trim().toLowerCase();
+        if (existingOwner && entry.matchedEmails.has(existingOwner)) {
+          entry.record.usuario_email = existingOwner;
+          entry.matchedEmail = existingOwner;
+          if (hasUsuarioIdColumn) {
+            entry.record.usuario_id = clientIdMap.get(existingOwner) || entry.record.usuario_id;
+          }
+        }
+      }
+    }
+
     // 4. Detección Inteligente de Cambios (Delta) y Transiciones de Estado:
     // Solo escribimos en la base de datos lo que es nuevo o lo que cambió de estado
     const recordsToUpsert = [];
@@ -1274,9 +1555,26 @@ async function runMirrorSyncCycle() {
       const currentFingerprint = buildRecordFingerprint(entry.record, entry.rawItem?.fecModify);
 
       if (!cachedStatus) {
-        // WR nuevo no visto en la caché de este demonio (nuevo paquete registrado por TIB)
-        recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, { statusTib: entry.statusTib, fingerprint: currentFingerprint });
+
+        const existingDb = existingDbByWr.get(canonicalWr);
+        const matchesExistingDb =
+          USE_TIB_V2 &&
+          existingDb &&
+          cleanExactString(existingDb.estado_tib) === cleanExactString(entry.record.estado_tib) &&
+          cleanExactString(existingDb.nombre_consignatario) === cleanExactString(entry.record.nombre_consignatario) &&
+          cleanExactString(existingDb.tracking) === cleanExactString(entry.record.tracking) &&
+          Number(existingDb.peso_kg || 0).toFixed(2) === Number(entry.record.peso_kg || 0).toFixed(2) &&
+          cleanExactString(existingDb.tipo_empaque) === cleanExactString(entry.record.tipo_empaque) &&
+          (existingDb.tib_imagen_url || null) === (entry.record.tib_imagen_url || null) &&
+          (existingDb.tib_ticket_pdf_url || null) === (entry.record.tib_ticket_pdf_url || null) &&
+          cleanExactString(existingDb.ubicacion_almacen) === cleanExactString(entry.record.ubicacion_almacen) &&
+          String(existingDb.usuario_email || '').trim().toLowerCase() === String(entry.record.usuario_email || '').trim().toLowerCase();
+
+        if (!matchesExistingDb) {
+          // WR nuevo o diferente respecto a Supabase
+          recordsToUpsert.push(entry.record);
+        }
 
         if (!isInitialRun) {
           // Notificar únicamente a clientes regulares registrados cuando su paquete ingresa en RECIBIDO a Miami
@@ -1331,7 +1629,7 @@ async function runMirrorSyncCycle() {
       }
 
       // 5.B. Actualización Automática en Tiempo Real del Catálogo de Consignatarios (amex_portal_clientes)
-      if (!isInitialRun) {
+      if (!isInitialRun || (USE_TIB_V2 && recordsToUpsert.length <= 2000)) {
         const affectedConsignees = new Set(
           recordsToUpsert
             .map((r) => cleanExactString(r.nombre_consignatario))
@@ -1351,48 +1649,60 @@ async function runMirrorSyncCycle() {
       }
     }
 
-    // 5.C. Depuración segura de WRs anulados/eliminados en TIB durante sincronización completa
-    if (isFullSweep) {
+    // 5.C. Depuración segura de WRs anulados/eliminados en TIB (solo en modo Legacy v1; en TIB v2 se preserva el histórico completo)
+    if (isFullSweep && !USE_TIB_V2) {
       await pruneOrphanPackagesSafely(processedWrsMap);
     }
 
     // 6. Despachar correos pendientes de arranque (recuperación) o nuevos ingresos del ciclo
     let sentEmailsCount = 0;
 
-    if (isInitialRun) {
-      sentEmailsCount += await recoverMissedNotificationsOnStartup(processedWrsMap, clientDetailsMap);
-    }
-
-    // Alertas exclusivamente para clientes regulares registrados (con dosificación anti-ráfaga de Gmail)
-    if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
-      console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes (con pausa anti-ráfaga)...`);
-      for (let i = 0; i < clientCandidatesToNotify.length; i++) {
-        const item = clientCandidatesToNotify[i];
-        const { type, entry } = item;
-        const email = item.email || entry.matchedEmail;
-        const nombreCompleto = clientDetailsMap.get(email) || 'Cliente AMEX';
-        const wr = entry.record.numero_recibo_bodega;
-        const tracking = entry.record.tracking;
-        const pesoKg = entry.record.peso_kg;
-        const tipoEmpaque = entry.record.tipo_empaque;
-        const fotoUrl = entry.record.tib_imagen_url;
-
-        let ok = false;
-        if (type === 'RECIBIDO') {
-          ok = await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, entry.record.nombre_consignatario);
-        } else if (type === 'ENVIADO') {
-          ok = await notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg);
-        } else if (type === 'ENTREGADO') {
-          ok = await notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking);
+    if (DISABLE_EMAIL_NOTIFICATIONS) {
+      if (isInitialRun) {
+        console.log('[TIB-MIRROR 🔕] Envío de correos pausado globalmente (DISABLE_EMAIL_NOTIFICATIONS=true).');
+      } else if (clientCandidatesToNotify.length > 0) {
+        console.log(`[TIB-MIRROR 🔕] Envío de correos pausado (DISABLE_EMAIL_NOTIFICATIONS=true). Omitidas ${clientCandidatesToNotify.length} alerta(s) en este ciclo.`);
+      }
+    } else {
+      if (isInitialRun) {
+        if (DISABLE_STARTUP_RECOVERY_EMAILS) {
+          console.log('[TIB-MIRROR 🛡️ Recuperación] Deshabilitada por DISABLE_STARTUP_RECOVERY_EMAILS=true.');
+        } else {
+          sentEmailsCount += await recoverMissedNotificationsOnStartup(processedWrsMap, clientDetailsMap);
         }
-        if (ok) sentEmailsCount++;
+      }
 
-        // Alternativa A: Dosificación inteligente para evitar greylisting / pausas de recepción de Gmail
-        if (i < clientCandidatesToNotify.length - 1) {
-          const nextEmail = clientCandidatesToNotify[i + 1]?.email || clientCandidatesToNotify[i + 1]?.entry?.matchedEmail;
-          const isSameRecipient = nextEmail && nextEmail.toLowerCase() === (email || '').toLowerCase();
-          const pauseMs = isSameRecipient ? 2000 : 1200;
-          await sleep(pauseMs);
+      // Alertas exclusivamente para clientes regulares registrados (con dosificación anti-ráfaga de Gmail)
+      if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
+        console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes (con pausa anti-ráfaga)...`);
+        for (let i = 0; i < clientCandidatesToNotify.length; i++) {
+          const item = clientCandidatesToNotify[i];
+          const { type, entry } = item;
+          const email = item.email || entry.matchedEmail;
+          const nombreCompleto = clientDetailsMap.get(email) || 'Cliente AMEX';
+          const wr = entry.record.numero_recibo_bodega;
+          const tracking = entry.record.tracking;
+          const pesoKg = entry.record.peso_kg;
+          const tipoEmpaque = entry.record.tipo_empaque;
+          const fotoUrl = entry.record.tib_imagen_url;
+
+          let ok = false;
+          if (type === 'RECIBIDO') {
+            ok = await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl, entry.record.nombre_consignatario);
+          } else if (type === 'ENVIADO') {
+            ok = await notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg);
+          } else if (type === 'ENTREGADO') {
+            ok = await notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking);
+          }
+          if (ok) sentEmailsCount++;
+
+          // Alternativa A: Dosificación inteligente para evitar greylisting / pausas de recepción de Gmail
+          if (i < clientCandidatesToNotify.length - 1) {
+            const nextEmail = clientCandidatesToNotify[i + 1]?.email || clientCandidatesToNotify[i + 1]?.entry?.matchedEmail;
+            const isSameRecipient = nextEmail && nextEmail.toLowerCase() === (email || '').toLowerCase();
+            const pauseMs = isSameRecipient ? 2000 : 1200;
+            await sleep(pauseMs);
+          }
         }
       }
     }
@@ -1416,9 +1726,10 @@ async function runMirrorSyncCycle() {
 // -------------------------------------------------------------
 console.log(`======================================================`);
 console.log(`🚀 INICIANDO DEMONIO ESPEJO AMEX ⇄ TIB COURIER`);
+console.log(`Origen TIB: ${USE_TIB_V2 ? `Cargo System v2 (${TIB_V2_BASE_URL})` : `Legacy v1 (${TIB_URL})`}`);
 console.log(`Frecuencia: Express cada ${FAST_INTERVAL_MINUTES} min (RECIBIDO), Completo cada ${FULL_SWEEP_EVERY_N_CYCLES * FAST_INTERVAL_MINUTES} min`);
 console.log(`Base de datos destino: ${PORTAL_URL}`);
-console.log(`Servicio de correo: ${RESEND_FROM}`);
+console.log(`Servicio de correo: ${RESEND_FROM} (${DISABLE_EMAIL_NOTIFICATIONS ? 'PAUSADO por DISABLE_EMAIL_NOTIFICATIONS=true' : 'ACTIVO'})`);
 console.log(`======================================================`);
 
 // Primer ciclo inmediato

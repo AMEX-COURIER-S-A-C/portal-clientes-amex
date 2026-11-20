@@ -38,7 +38,7 @@ const SECRET_PATTERNS = [
   },
   {
     name: 'TIB or Service Password Fallback',
-    regex: /(TIB_API_PASSWORD|TIB_PASSWORD|VPS_ROOT_PASSWORD)\s*\|\|\s*['"][^'"]+['"]/gi,
+    regex: /(TIB_API_PASSWORD|TIB_V2_PASSWORD|TIB_PASSWORD|VPS_ROOT_PASSWORD)\s*\|\|\s*['"][^'"]+['"]/gi,
   },
 ];
 

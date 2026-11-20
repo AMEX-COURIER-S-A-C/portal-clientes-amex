@@ -29,12 +29,16 @@ export function isValidPhotoTarget(wr: string, index: number): boolean {
 }
 
 /**
- * Comprueba que la URL resuelta pertenezca al host autorizado de TIB (evita SSRF).
+ * Comprueba que la URL resuelta pertenezca a un host autorizado de TIB (evita SSRF).
+ * Soporta tanto fotos históricas de tibcourier.com como fotos nuevas (.webp) de tibgrupo.com.
  */
+const ALLOWED_TIB_PHOTO_HOSTS = new Set(['www.tibcourier.com', 'www.tibgrupo.com']);
+
 export function isAuthorizedTibPhotoUrl(url?: string | null): url is string {
   if (!url) return false;
   try {
-    return new URL(url).hostname === 'www.tibcourier.com';
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && ALLOWED_TIB_PHOTO_HOSTS.has(parsed.hostname.toLowerCase());
   } catch {
     return false;
   }

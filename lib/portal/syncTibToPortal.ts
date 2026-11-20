@@ -1,6 +1,17 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
-import { getTibApiCredentials, normalizeTibWr, TIB_MEDIA_BASE_URL } from '@/lib/tib/apiClient';
+import {
+  getTibApiCredentials,
+  isTibV2Configured,
+  normalizeTibWr,
+  TIB_MEDIA_BASE_URL,
+} from '@/lib/tib/apiClient';
+import { createCargoSystemClient } from '@/lib/tib/cargoSystemClient';
+import {
+  CARGO_SYNC_STATUSES,
+  PORTAL_STATUS_PRIORITY,
+  type PortalTibStatus,
+} from '@/lib/tib/cargoSystemHelpers';
 import { cleanExactString } from '@/lib/portal/keywords';
 import {
   buildPostgrestMatchingOrFilter,
@@ -82,44 +93,31 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   );
   const superadminId = superadminProfile?.id || null;
 
-  // 2.B. Sincronización en vivo de paquetes RECIBIDO desde TIB API (solo en sincronización global)
+  // 2.B. Sincronización en vivo desde TIB API (prioriza TIB v2 Cargo System; fallback a v1 legacy)
   let updatedFromTibCount = 0;
+  let syncSourceLabel = 'TIB';
   if (!isSpecificRegularClient) {
     try {
-      const creds = getTibApiCredentials();
-      const tibRes = await fetch(creds.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: creds.email,
-          password: creds.password,
-          status: 'RECIBIDO',
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
+      const CHUNK = 500;
+      const deltaRecordsToUpsert: Record<string, any>[] = [];
+      const affectedConsignees = new Set<string>();
 
-      if (tibRes.ok) {
-        const tibJson = await tibRes.json();
-        const rawRecibidos: RawTibItem[] = Array.isArray(tibJson?.data) ? tibJson.data : [];
+      if (isTibV2Configured()) {
+        syncSourceLabel = 'TIB Cargo System v2';
+        const cargoClient = createCargoSystemClient();
+        const { packages: v2Map } = await cargoClient.fetchNormalizedPackages({
+          statuses: CARGO_SYNC_STATUSES,
+        });
 
-        if (rawRecibidos.length > 0) {
-          const tibMap = new Map<string, RawTibItem>();
-          for (const item of rawRecibidos) {
-            const canonicalWr = normalizeTibWr(item.wr, item.seqwr);
-            if (canonicalWr) {
-              tibMap.set(canonicalWr, item);
-            }
-          }
-
-          const wrList = Array.from(tibMap.keys());
+        if (v2Map.size > 0) {
+          const wrList = Array.from(v2Map.keys());
           const existingMap = new Map<string, any>();
 
-          const CHUNK = 500;
           for (let i = 0; i < wrList.length; i += CHUNK) {
             const slice = wrList.slice(i, i + CHUNK);
             const { data: existingRows } = await portalAdmin
               .from('paquetes_portal')
-              .select('numero_recibo_bodega, nombre_consignatario, tracking, peso_kg, tipo_empaque, tib_imagen_url, tib_ticket_pdf_url, estado_tib, usuario_email, creado_en')
+              .select('numero_recibo_bodega, nombre_consignatario, tracking, peso_kg, tipo_empaque, tib_imagen_url, tib_ticket_pdf_url, estado_tib, usuario_email, creado_en, ubicacion_almacen')
               .in('numero_recibo_bodega', slice);
 
             for (const row of existingRows || []) {
@@ -127,25 +125,21 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
             }
           }
 
-          const deltaRecordsToUpsert: Record<string, any>[] = [];
-          const affectedConsignees = new Set<string>();
-
-          for (const [canonicalWr, item] of tibMap.entries()) {
+          for (const [canonicalWr, item] of v2Map.entries()) {
             const existing = existingMap.get(canonicalWr);
-            const newConsignee = (item.nclient || '').trim();
-            const newTracking = item.tracking?.trim() || null;
-            const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
-            const newWeight = isNaN(weightNum) ? 0 : weightNum;
-            const newTipo = (item.container || item.description || 'CAJA').trim().toUpperCase();
-            const newImgUrl = item.img
-              ? item.img
-                  .split(',')
-                  .map((p) => p.trim())
-                  .filter(Boolean)
-                  .map((p) => (p.startsWith('http') ? p : `${TIB_MEDIA_BASE_URL}${p.replace(/^\/+/, '')}`))
-                  .join(',')
-              : null;
-            const newTicketUrl = item.ticket ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}` : null;
+            const newConsignee = item.nombreConsignatario;
+            const newTracking = item.tracking;
+            const newWeight = item.pesoKg;
+            const newTipo = item.tipoEmpaque;
+            const newImgUrl = item.tibImagenUrl || existing?.tib_imagen_url || null;
+            const newTicketUrl = item.tibTicketPdfUrl || existing?.tib_ticket_pdf_url || null;
+            const newUbicacion = item.ubicacionAlmacen || existing?.ubicacion_almacen || null;
+
+            const existingStatusRaw = String(existing?.estado_tib || '').trim().toUpperCase() as PortalTibStatus;
+            const existingPrio = PORTAL_STATUS_PRIORITY[existingStatusRaw] || 0;
+            const incomingPrio = PORTAL_STATUS_PRIORITY[item.estadoTib] || 1;
+            const resolvedStatus: PortalTibStatus =
+              existing && existingPrio > incomingPrio ? existingStatusRaw : item.estadoTib;
 
             const isNew = !existing;
             const isModified =
@@ -154,16 +148,12 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
                 cleanExactString(existing.tracking) !== cleanExactString(newTracking) ||
                 Number(existing.peso_kg || 0).toFixed(2) !== Number(newWeight).toFixed(2) ||
                 cleanExactString(existing.tipo_empaque) !== cleanExactString(newTipo) ||
+                cleanExactString(existing.estado_tib) !== cleanExactString(resolvedStatus) ||
                 (existing.tib_imagen_url || null) !== newImgUrl ||
-                (existing.tib_ticket_pdf_url || null) !== newTicketUrl);
+                (existing.tib_ticket_pdf_url || null) !== newTicketUrl ||
+                cleanExactString(existing.ubicacion_almacen) !== cleanExactString(newUbicacion));
 
             if (isNew || isModified) {
-              let parsedDate = new Date().toISOString();
-              if (item.fecRegister) {
-                const d = new Date(item.fecRegister);
-                if (!isNaN(d.getTime())) parsedDate = d.toISOString();
-              }
-
               const targetEmail = existing?.usuario_email || ADMIN_MASTER_EMAIL;
               const recordObj: Record<string, any> = {
                 numero_recibo_bodega: canonicalWr,
@@ -172,12 +162,12 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
                 usuario_email: targetEmail,
                 tipo_empaque: newTipo,
                 peso_kg: newWeight,
-                estado_tib: existing?.estado_tib || 'RECIBIDO',
+                estado_tib: resolvedStatus,
                 estado_amex: 'en_almacen',
                 tib_imagen_url: newImgUrl,
                 tib_ticket_pdf_url: newTicketUrl,
-                ubicacion_almacen: item.rack?.trim() || null,
-                creado_en: existing?.creado_en || parsedDate,
+                ubicacion_almacen: newUbicacion,
+                creado_en: existing?.creado_en || item.creadoEn,
                 actualizado_en: new Date().toISOString(),
               };
 
@@ -192,34 +182,140 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
               }
             }
           }
+        }
+      } else {
+        syncSourceLabel = 'TIB Legacy v1';
+        const creds = getTibApiCredentials();
+        const tibRes = await fetch(creds.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: creds.email,
+            password: creds.password,
+            status: 'RECIBIDO',
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
 
-          if (deltaRecordsToUpsert.length > 0) {
-            for (let i = 0; i < deltaRecordsToUpsert.length; i += CHUNK) {
-              const slice = deltaRecordsToUpsert.slice(i, i + CHUNK);
-              await portalAdmin
-                .from('paquetes_portal')
-                .upsert(slice, { onConflict: 'numero_recibo_bodega' });
+        if (tibRes.ok) {
+          const tibJson = await tibRes.json();
+          const rawRecibidos: RawTibItem[] = Array.isArray(tibJson?.data) ? tibJson.data : [];
+
+          if (rawRecibidos.length > 0) {
+            const tibMap = new Map<string, RawTibItem>();
+            for (const item of rawRecibidos) {
+              const canonicalWr = normalizeTibWr(item.wr, item.seqwr);
+              if (canonicalWr) {
+                tibMap.set(canonicalWr, item);
+              }
             }
-            updatedFromTibCount = deltaRecordsToUpsert.length;
 
-            // El trigger de base de datos (002 / 006) mantiene amex_portal_clientes sincronizado;
-            // si existe la función RPC, se invoca de forma ligera como respaldo sin descargar filas a Node.js.
-            if (typeof (portalAdmin as any).rpc === 'function') {
-              await Promise.all(
-                Array.from(affectedConsignees)
-                  .filter(Boolean)
-                  .map((cName) =>
-                    Promise.resolve(
-                      portalAdmin.rpc('recalcular_consignatario_catalogo', { target_nombre: cName })
-                    ).catch(() => null)
-                  )
-              );
+            const wrList = Array.from(tibMap.keys());
+            const existingMap = new Map<string, any>();
+
+            for (let i = 0; i < wrList.length; i += CHUNK) {
+              const slice = wrList.slice(i, i + CHUNK);
+              const { data: existingRows } = await portalAdmin
+                .from('paquetes_portal')
+                .select('numero_recibo_bodega, nombre_consignatario, tracking, peso_kg, tipo_empaque, tib_imagen_url, tib_ticket_pdf_url, estado_tib, usuario_email, creado_en')
+                .in('numero_recibo_bodega', slice);
+
+              for (const row of existingRows || []) {
+                existingMap.set(row.numero_recibo_bodega, row);
+              }
+            }
+
+            for (const [canonicalWr, item] of tibMap.entries()) {
+              const existing = existingMap.get(canonicalWr);
+              const newConsignee = (item.nclient || '').trim();
+              const newTracking = item.tracking?.trim() || null;
+              const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
+              const newWeight = isNaN(weightNum) ? 0 : weightNum;
+              const newTipo = (item.container || item.description || 'CAJA').trim().toUpperCase();
+              const newImgUrl = item.img
+                ? item.img
+                    .split(',')
+                    .map((p) => p.trim())
+                    .filter(Boolean)
+                    .map((p) => (p.startsWith('http') ? p : `${TIB_MEDIA_BASE_URL}${p.replace(/^\/+/, '')}`))
+                    .join(',')
+                : null;
+              const newTicketUrl = item.ticket ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}` : null;
+
+              const isNew = !existing;
+              const isModified =
+                existing &&
+                (cleanExactString(existing.nombre_consignatario) !== cleanExactString(newConsignee) ||
+                  cleanExactString(existing.tracking) !== cleanExactString(newTracking) ||
+                  Number(existing.peso_kg || 0).toFixed(2) !== Number(newWeight).toFixed(2) ||
+                  cleanExactString(existing.tipo_empaque) !== cleanExactString(newTipo) ||
+                  (existing.tib_imagen_url || null) !== newImgUrl ||
+                  (existing.tib_ticket_pdf_url || null) !== newTicketUrl);
+
+              if (isNew || isModified) {
+                let parsedDate = new Date().toISOString();
+                if (item.fecRegister) {
+                  const d = new Date(item.fecRegister);
+                  if (!isNaN(d.getTime())) parsedDate = d.toISOString();
+                }
+
+                const targetEmail = existing?.usuario_email || ADMIN_MASTER_EMAIL;
+                const recordObj: Record<string, any> = {
+                  numero_recibo_bodega: canonicalWr,
+                  tracking: newTracking,
+                  nombre_consignatario: newConsignee,
+                  usuario_email: targetEmail,
+                  tipo_empaque: newTipo,
+                  peso_kg: newWeight,
+                  estado_tib: existing?.estado_tib || 'RECIBIDO',
+                  estado_amex: 'en_almacen',
+                  tib_imagen_url: newImgUrl,
+                  tib_ticket_pdf_url: newTicketUrl,
+                  ubicacion_almacen: item.rack?.trim() || null,
+                  creado_en: existing?.creado_en || parsedDate,
+                  actualizado_en: new Date().toISOString(),
+                };
+
+                if (hasUsuarioIdColumn && targetEmail === ADMIN_MASTER_EMAIL && superadminId) {
+                  recordObj.usuario_id = superadminId;
+                }
+
+                deltaRecordsToUpsert.push(recordObj);
+                if (newConsignee) affectedConsignees.add(cleanExactString(newConsignee));
+                if (existing?.nombre_consignatario) {
+                  affectedConsignees.add(cleanExactString(existing.nombre_consignatario));
+                }
+              }
             }
           }
         }
       }
+
+      if (deltaRecordsToUpsert.length > 0) {
+        for (let i = 0; i < deltaRecordsToUpsert.length; i += CHUNK) {
+          const slice = deltaRecordsToUpsert.slice(i, i + CHUNK);
+          await portalAdmin
+            .from('paquetes_portal')
+            .upsert(slice, { onConflict: 'numero_recibo_bodega' });
+        }
+        updatedFromTibCount = deltaRecordsToUpsert.length;
+
+        // El trigger de base de datos (002 / 006) mantiene amex_portal_clientes sincronizado;
+        // si existe la función RPC, se invoca de forma ligera como respaldo sin descargar filas a Node.js.
+        if (typeof (portalAdmin as any).rpc === 'function') {
+          await Promise.all(
+            Array.from(affectedConsignees)
+              .filter(Boolean)
+              .map((cName) =>
+                Promise.resolve(
+                  portalAdmin.rpc('recalcular_consignatario_catalogo', { target_nombre: cName })
+                ).catch(() => null)
+              )
+          );
+        }
+      }
     } catch (liveErr) {
-      console.warn('[syncTibPackagesToPortal] Aviso en sincronización delta RECIBIDO desde TIB:', liveErr);
+      console.warn(`[syncTibPackagesToPortal] Aviso en sincronización delta (${syncSourceLabel}):`, liveErr);
     }
   }
 

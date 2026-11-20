@@ -10,6 +10,7 @@ export type PortalEventType =
   | 'BUSQUEDA_INVENTARIO'
   | 'FILTRO_ESTADO'
   | 'VER_FOTO_ALMACEN'
+  | 'VER_TICKET_PDF'
   | 'EXPORTAR_EXCEL'
   | 'CONSULTA_DETALLE';
 
