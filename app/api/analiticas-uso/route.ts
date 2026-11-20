@@ -4,6 +4,7 @@ import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { extractInternalUsername, isInternalStaffEmail } from '@/lib/portal/roles';
 import { cleanExactString } from '@/lib/portal/keywords';
 import { matchesConsigneeRule, normalizeMatchingRules } from '@/lib/portal/matching';
+import { summarizeHistoricalClientLogins } from '@/lib/analytics/loginStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,7 +155,27 @@ export async function GET(req: NextRequest) {
       return all;
     };
 
-    const [clientsData, authUsers, catalogData, systemCountRes, internalStaffRes] = await Promise.all([
+    const fetchAllHistoricalLogins = async () => {
+      const all: Array<{ usuario_email: string; creado_en: string }> = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data, error } = await portalAdmin
+          .from('portal_eventos_uso')
+          .select('usuario_email, creado_en')
+          .eq('tipo_evento', 'LOGIN_EXITOSO')
+          .order('creado_en', { ascending: false })
+          .range(from, from + step - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < step) break;
+        from += step;
+      }
+      return all;
+    };
+
+    const [clientsData, authUsers, catalogData, systemCountRes, internalStaffRes, historicalLoginRows] = await Promise.all([
       fetchAllClients(),
       fetchAllAuthUsers(),
       fetchFullCatalog(),
@@ -165,7 +186,13 @@ export async function GET(req: NextRequest) {
         .from('usuarios_internos')
         .select('id, username, auth_email, nombre_completo, cargo, puede_exportar_excel, activo, creado_en')
         .order('nombre_completo', { ascending: true }),
+      fetchAllHistoricalLogins(),
     ]);
+
+    const historicalLoginSummary = summarizeHistoricalClientLogins(historicalLoginRows, {
+      todayLimaKey: limaHoy,
+      isEligibleClientEmail: (email) => !isSuperadminEmail(email) && !isInternalStaffEmail(email),
+    });
 
     const internalStaffRows = internalStaffRes.data || [];
 
@@ -813,6 +840,9 @@ export async function GET(req: NextRequest) {
         total_fotos_vistas: totalFotos,
         total_descargas_excel: totalExcels,
         total_logins: totalLogins,
+        total_logins_historicos: historicalLoginSummary.totalLoginsHistoricos,
+        logins_hoy: historicalLoginSummary.loginsHoy,
+        clientes_con_login_historico: historicalLoginSummary.clientesConLoginHistorico,
         total_correos_enviados: totalCorreosEnviados,
         cliente_mas_activo: clienteMasActivo,
         clientes_activados: clientesActivados,

@@ -32,6 +32,7 @@ import {
   Package,
   Mail,
   Send,
+  LogIn,
 } from 'lucide-react';
 
 interface KPIResumen {
@@ -42,6 +43,9 @@ interface KPIResumen {
   total_fotos_vistas: number;
   total_descargas_excel: number;
   total_logins: number;
+  total_logins_historicos?: number;
+  logins_hoy?: number;
+  clientes_con_login_historico?: number;
   total_correos_enviados?: number;
   cliente_mas_activo: string;
   clientes_activados: number;
@@ -503,6 +507,9 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     total_fotos_vistas: 0,
     total_descargas_excel: 0,
     total_logins: 0,
+    total_logins_historicos: 0,
+    logins_hoy: 0,
+    clientes_con_login_historico: 0,
     total_correos_enviados: 0,
     cliente_mas_activo: 'Sin datos',
     clientes_activados: 0,
@@ -858,22 +865,23 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       <div className="analytics-kpi-grid">
         {[
           {
-            key: 'activos-hoy',
-            title: 'Activos Hoy',
+            key: 'logins-historicos',
+            title: 'Inicios de Sesión Históricos',
             iconBg: '#eff6ff',
-            icon: <Users style={{ width: '15px', height: '15px', color: '#2563eb' }} />,
-            value: kpis.activos_hoy,
-            variation: renderVariation(kpis.activos_periodo, prev?.activos_periodo),
+            icon: <LogIn style={{ width: '15px', height: '15px', color: '#2563eb' }} />,
+            value: (kpis.total_logins_historicos ?? kpis.total_logins ?? 0).toLocaleString(),
+            variation: renderVariation(kpis.total_logins, prev?.total_logins),
             body: (
               <>
                 <div style={{ marginTop: '5px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
-                  <strong style={{ color: '#16a34a' }}>
-                    {kpis.total_clientes > 0 ? `${Math.round((kpis.activos_periodo / kpis.total_clientes) * 100)}%` : '0%'}
-                  </strong>{' '}
-                  con actividad real en {days} días ({kpis.activos_periodo} de {kpis.total_clientes})
+                  <strong style={{ color: '#2563eb' }}>{kpis.total_logins.toLocaleString()}</strong> en los últimos {days} días ·{' '}
+                  <strong style={{ color: '#0f172a' }}>{(kpis.logins_hoy ?? 0).toLocaleString()}</strong> hoy
                 </div>
-                <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-                  <strong style={{ color: '#2563eb' }}>{kpis.total_logins}</strong> login(s) en el período
+                <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b', lineHeight: 1.35 }}>
+                  <strong style={{ color: '#16a34a' }}>
+                    {kpis.clientes_activados} de {kpis.total_clientes}
+                  </strong>{' '}
+                  cuentas ingresaron ({kpis.activos_hoy} {kpis.activos_hoy === 1 ? 'activo' : 'activos'} hoy)
                 </div>
               </>
             ),
