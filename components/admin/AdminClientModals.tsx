@@ -14,8 +14,10 @@ import {
   Plus,
 } from 'lucide-react';
 import { cleanExactString } from '@/lib/portal/keywords';
+import { BLOCKED_GROUP_KEYWORDS } from '@/lib/portal/matching';
 import { ClientePortalItem, KeywordsPopoverStyle, TibCatalogClient } from '@/lib/portal/types';
 import TibConsigneeSearchInput from './TibConsigneeSearchInput';
+import MatchingPreviewBox from './MatchingPreviewBox';
 
 export interface AdminClientModalsProps {
   isAddClientOpen: boolean;
@@ -26,11 +28,13 @@ export interface AdminClientModalsProps {
   setNewClientEmail: React.Dispatch<React.SetStateAction<string>>;
   newClientKeywordsList: string[];
   setNewClientKeywordsList: React.Dispatch<React.SetStateAction<string[]>>;
+  newClientGroupKeywordsList: string[];
+  setNewClientGroupKeywordsList: React.Dispatch<React.SetStateAction<string[]>>;
   isCreatingClient: boolean;
   createClientSuccess: string | null;
   createClientError: string | null;
   onClearCreateFeedback: () => void;
-  handleCreateClientSubmit: (keywordsToSubmit: string[]) => void | Promise<void>;
+  handleCreateClientSubmit: (exactKeywordsToSubmit: string[], groupKeywordsToSubmit: string[]) => void | Promise<void>;
   isTibDropdownOpen: boolean;
   setIsTibDropdownOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleToggleTibKeyword: (client: TibCatalogClient) => void;
@@ -67,6 +71,8 @@ export default function AdminClientModals({
   setNewClientEmail,
   newClientKeywordsList,
   setNewClientKeywordsList,
+  newClientGroupKeywordsList,
+  setNewClientGroupKeywordsList,
   isCreatingClient,
   createClientSuccess,
   createClientError,
@@ -92,6 +98,9 @@ export default function AdminClientModals({
   handleResetPassword,
 }: AdminClientModalsProps) {
   const [manualKeywordInput, setManualKeywordInput] = useState('');
+  const [groupKeywordInput, setGroupKeywordInput] = useState('');
+  const [groupInputHint, setGroupInputHint] = useState<string | null>(null);
+  const [showAgencySection, setShowAgencySection] = useState(false);
   const [searchResetSignal, setSearchResetSignal] = useState(0);
   const modalBodyRef = useRef<HTMLDivElement | null>(null);
   const nombreInputRef = useRef<HTMLInputElement | null>(null);
@@ -101,6 +110,9 @@ export default function AdminClientModals({
   useEffect(() => {
     if (!isAddClientOpen) {
       setManualKeywordInput('');
+      setGroupKeywordInput('');
+      setGroupInputHint(null);
+      setShowAgencySection(false);
       return;
     }
     const timer = setTimeout(() => {
@@ -122,6 +134,8 @@ export default function AdminClientModals({
     }
     if (createClientSuccess) {
       setManualKeywordInput('');
+      setGroupKeywordInput('');
+      setGroupInputHint(null);
       setSearchResetSignal((prev) => prev + 1);
     }
   }, [createClientSuccess, createClientError]);
@@ -133,7 +147,7 @@ export default function AdminClientModals({
     setNewClientKeywordsList((prev) => {
       const next = [...prev];
       for (const kw of parsed) {
-        if (!next.includes(kw)) {
+        if (kw.length >= 2 && kw !== 'AMEX' && !next.includes(kw)) {
           next.push(kw);
         }
       }
@@ -142,35 +156,85 @@ export default function AdminClientModals({
     setManualKeywordInput('');
   };
 
+  const handleAddGroupKeywords = (rawText = groupKeywordInput) => {
+    const parsed = parseKeywordsBatch(rawText);
+    if (parsed.length === 0) return;
+
+    const valid: string[] = [];
+    const rejected: string[] = [];
+    for (const kw of parsed) {
+      if (kw.length < 3 || BLOCKED_GROUP_KEYWORDS.has(kw)) {
+        rejected.push(kw);
+      } else {
+        valid.push(kw);
+      }
+    }
+
+    if (rejected.length > 0) {
+      setGroupInputHint(
+        `Ignorado (${rejected.join(', ')}): las siglas de agencia requieren mínimo 3 letras y no pueden ser genéricas como AMEX.`
+      );
+    } else {
+      setGroupInputHint(null);
+    }
+
+    if (valid.length > 0) {
+      setNewClientGroupKeywordsList((prev) => {
+        const next = [...prev];
+        for (const kw of valid) {
+          if (!next.includes(kw)) next.push(kw);
+        }
+        return next;
+      });
+    }
+    setGroupKeywordInput('');
+  };
+
   const handleRemoveKeywordChip = (idxToRemove: number) => {
     setNewClientKeywordsList((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+  };
+
+  const handleRemoveGroupKeywordChip = (idxToRemove: number) => {
+    setNewClientGroupKeywordsList((prev) => prev.filter((_, idx) => idx !== idxToRemove));
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isCreatingClient) return;
 
-    // Capturar automáticamente cualquier texto manual escrito sin haber pulsado "+ Añadir"
-    const pending = parseKeywordsBatch(manualKeywordInput);
-    const mergedKeywords = [...newClientKeywordsList];
-    for (const kw of pending) {
-      if (!mergedKeywords.includes(kw)) {
-        mergedKeywords.push(kw);
-      }
+    const pendingExact = parseKeywordsBatch(manualKeywordInput).filter((k) => k.length >= 2 && k !== 'AMEX');
+    const mergedExact = [...newClientKeywordsList];
+    for (const kw of pendingExact) {
+      if (!mergedExact.includes(kw)) mergedExact.push(kw);
     }
-    if (pending.length > 0) {
-      setNewClientKeywordsList(mergedKeywords);
+    if (pendingExact.length > 0) {
+      setNewClientKeywordsList(mergedExact);
       setManualKeywordInput('');
     }
+
+    const pendingGroup = parseKeywordsBatch(groupKeywordInput).filter(
+      (k) => k.length >= 3 && !BLOCKED_GROUP_KEYWORDS.has(k)
+    );
+    const mergedGroup = [...newClientGroupKeywordsList];
+    for (const kw of pendingGroup) {
+      if (!mergedGroup.includes(kw)) mergedGroup.push(kw);
+    }
+    if (pendingGroup.length > 0) {
+      setNewClientGroupKeywordsList(mergedGroup);
+      setGroupKeywordInput('');
+    }
+
     setIsTibDropdownOpen(false);
-    await handleCreateClientSubmit(mergedKeywords);
+    await handleCreateClientSubmit(mergedExact, mergedGroup);
   };
 
   const hasUnsavedDraft = Boolean(
     newClientNombre.trim() ||
       newClientEmail.trim() ||
       newClientKeywordsList.length > 0 ||
-      manualKeywordInput.trim()
+      newClientGroupKeywordsList.length > 0 ||
+      manualKeywordInput.trim() ||
+      groupKeywordInput.trim()
   );
 
   const handleBackdropClick = () => {
@@ -581,9 +645,156 @@ export default function AdminClientModals({
                   </div>
 
                   <span style={{ fontSize: '11px', color: '#64748b' }}>
-                    Si una caja llega en TIB con cualquiera de estas variaciones, se asignará automáticamente a este correo.
+                    Coincidencia <strong>exacta</strong> del nombre del consignatario (evita cruces con homónimos como AMEX BRIGITTE CORDOVA).
                   </span>
                 </div>
+
+                {/* Sección Avanzada: Siglas / Prefijos de Agencia (Palabra Completa) */}
+                <div
+                  style={{
+                    backgroundColor: '#faf5ff',
+                    border: '1px solid #e9d5ff',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowAgencySection((v) => !v)}
+                    style={{
+                      width: '100%',
+                      background: 'none',
+                      border: 'none',
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#6d28d9' }}>
+                      Siglas / Prefijos de Agencia — Solo Couriers (Opcional)
+                      {newClientGroupKeywordsList.length > 0 ? ` (${newClientGroupKeywordsList.length})` : ''}
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#7c3aed' }}>
+                      {showAgencySection ? 'Ocultar' : 'Configurar'}
+                    </span>
+                  </button>
+
+                  {(showAgencySection || newClientGroupKeywordsList.length > 0) && (
+                    <div
+                      style={{
+                        borderTop: '1px solid #e9d5ff',
+                        padding: '10px 14px 12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: '11.5px', color: '#5b21b6', lineHeight: 1.4 }}>
+                        Úsalo solo para agencias/couriers (ej. <strong>RUTA</strong>, <strong>AMC</strong>, <strong>MDS</strong>). Busca por <strong>palabra completa</strong>, así <em>AURA</em> jamás coincide con <em>LAURA</em>.
+                      </p>
+
+                      {newClientGroupKeywordsList.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {newClientGroupKeywordsList.map((kw, idx) => (
+                            <span
+                              key={kw}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                backgroundColor: '#f3e8ff',
+                                color: '#6b21a8',
+                                border: '1px solid #d8b4fe',
+                                borderRadius: '6px',
+                                padding: '3px 8px',
+                                fontSize: '11.5px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              <span>Sigla: {kw}</span>
+                              <button
+                                type="button"
+                                disabled={isCreatingClient}
+                                onClick={() => handleRemoveGroupKeywordChip(idx)}
+                                aria-label={`Quitar sigla ${kw}`}
+                                style={{ background: 'none', border: 'none', color: '#6b21a8', cursor: 'pointer', padding: '1px', display: 'inline-flex' }}
+                              >
+                                <X style={{ width: '12px', height: '12px' }} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          disabled={isCreatingClient}
+                          value={groupKeywordInput}
+                          onChange={(e) => setGroupKeywordInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ',') {
+                              e.preventDefault();
+                              handleAddGroupKeywords();
+                            }
+                          }}
+                          placeholder="Ej: RUTA, AMC, MDS (mín. 3 letras)..."
+                          className="amex-input"
+                          style={{
+                            flex: '1 1 200px',
+                            minWidth: 0,
+                            height: '35px',
+                            padding: '0 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #d8b4fe',
+                            fontSize: '12px',
+                            backgroundColor: '#ffffff',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={isCreatingClient || !groupKeywordInput.trim()}
+                          onClick={() => handleAddGroupKeywords()}
+                          style={{
+                            height: '35px',
+                            padding: '0 12px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: groupKeywordInput.trim() ? '#7c3aed' : '#ede9fe',
+                            color: groupKeywordInput.trim() ? '#ffffff' : '#a78bfa',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: groupKeywordInput.trim() && !isCreatingClient ? 'pointer' : 'not-allowed',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus style={{ width: '13px', height: '13px' }} />
+                          <span>Añadir sigla</span>
+                        </button>
+                      </div>
+
+                      {groupInputHint && (
+                        <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600 }}>
+                          {groupInputHint}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Simulador de impacto en vivo */}
+                <MatchingPreviewBox
+                  compact
+                  exactConsignees={newClientKeywordsList}
+                  groupKeywords={newClientGroupKeywordsList}
+                  fallbackNombre={newClientNombre}
+                  applyFallbackWhenEmpty
+                />
               </div>
 
               {/* Pie fijo del modal (siempre visible, sin ocultarse tras el dropdown ni requerir scroll) */}
@@ -779,11 +990,13 @@ export default function AdminClientModals({
         </div>
       )}
 
-      {/* Popover Flotante de Consignatarios Vinculados */}
+      {/* Popover Flotante de Consignatarios y Siglas Vinculadas */}
       {activeKeywordsClient &&
         keywordsPopoverStyle &&
-        Array.isArray(activeKeywordsClient.alias_palabras_clave) &&
-        activeKeywordsClient.alias_palabras_clave.length > 0 && (
+        ((Array.isArray(activeKeywordsClient.alias_palabras_clave) &&
+          activeKeywordsClient.alias_palabras_clave.length > 0) ||
+          (Array.isArray(activeKeywordsClient.palabras_clave_grupo) &&
+            activeKeywordsClient.palabras_clave_grupo.length > 0)) && (
           <>
             <div
               onClick={(e) => {
@@ -813,13 +1026,16 @@ export default function AdminClientModals({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Tag style={{ width: '13px', height: '13px', color: '#ff5722' }} aria-hidden="true" />
                   <span style={{ fontSize: '12px', fontWeight: 700, color: '#111827' }}>
-                    Consignatarios vinculados ({activeKeywordsClient.alias_palabras_clave.length})
+                    Reglas de Matching (
+                    {(activeKeywordsClient.alias_palabras_clave?.length || 0) +
+                      (activeKeywordsClient.palabras_clave_grupo?.length || 0)}
+                    )
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={onCloseKeywordsPopover}
-                  aria-label="Cerrar lista de consignatarios"
+                  aria-label="Cerrar lista de reglas de matching"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#9ca3af', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
                 >
                   <X style={{ width: '14px', height: '14px' }} aria-hidden="true" />
@@ -831,29 +1047,67 @@ export default function AdminClientModals({
                   maxHeight: keywordsPopoverStyle.maxHeight,
                   overflowY: 'auto',
                   display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '5px',
+                  flexDirection: 'column',
+                  gap: '8px',
                   paddingRight: '2px',
                 }}
               >
-                {activeKeywordsClient.alias_palabras_clave.map((k, ki) => (
-                  <span
-                    key={ki}
-                    style={{
-                      backgroundColor: '#f8fafc',
-                      color: '#1e293b',
-                      border: '1px solid #e2e8f0',
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      lineHeight: 1.3,
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {k}
-                  </span>
-                ))}
+                {Array.isArray(activeKeywordsClient.alias_palabras_clave) &&
+                  activeKeywordsClient.alias_palabras_clave.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>
+                        Consignatarios exactos ({activeKeywordsClient.alias_palabras_clave.length})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                        {activeKeywordsClient.alias_palabras_clave.map((k, ki) => (
+                          <span
+                            key={`ex-${ki}`}
+                            style={{
+                              backgroundColor: '#f8fafc',
+                              color: '#1e293b',
+                              border: '1px solid #e2e8f0',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              lineHeight: 1.3,
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {Array.isArray(activeKeywordsClient.palabras_clave_grupo) &&
+                  activeKeywordsClient.palabras_clave_grupo.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '10px', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', marginBottom: '4px' }}>
+                        Siglas de agencia — palabra completa ({activeKeywordsClient.palabras_clave_grupo.length})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                        {activeKeywordsClient.palabras_clave_grupo.map((g, gi) => (
+                          <span
+                            key={`grp-${gi}`}
+                            style={{
+                              backgroundColor: '#f5f3ff',
+                              color: '#6d28d9',
+                              border: '1px solid #ddd6fe',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              lineHeight: 1.3,
+                            }}
+                          >
+                            Sigla: {g}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
               </div>
             </div>
           </>

@@ -18,11 +18,38 @@ export interface ClientePortalItem {
   nombre_completo: string;
   email: string;
   alias_palabras_clave: string[] | null;
+  palabras_clave_grupo?: string[] | null;
   activo: boolean;
   password_establecido?: boolean;
   ultimo_acceso?: string | null;
   invitado_en?: string | null;
   creado_en: string;
+}
+
+export interface MatchingConflictItem {
+  consignatario: string;
+  clientes: Array<{
+    id: string;
+    nombre_completo: string;
+    email: string;
+  }>;
+}
+
+export interface MatchingPreviewMatchItem {
+  nombre: string;
+  total_paquetes: number;
+  recibidos: number;
+  enviados: number;
+  matched_by: Array<{ tipo: 'exacto' | 'grupo'; regla: string }>;
+  compartido_con: Array<{ id: string; nombre_completo: string; email: string }>;
+}
+
+export interface MatchingPreviewResponse {
+  total_consignatarios: number;
+  total_paquetes: number;
+  muestra_consignatarios: MatchingPreviewMatchItem[];
+  conflictos: MatchingConflictItem[];
+  advertencias: string[];
 }
 
 export interface TibCatalogClient {

@@ -33,6 +33,7 @@ export default function ConfiguracionPage() {
   const [newClientNombre, setNewClientNombre] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
   const [newClientKeywordsList, setNewClientKeywordsList] = useState<string[]>([]);
+  const [newClientGroupKeywordsList, setNewClientGroupKeywordsList] = useState<string[]>([]);
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [createClientSuccess, setCreateClientSuccess] = useState<string | null>(null);
   const [createClientError, setCreateClientError] = useState<string | null>(null);
@@ -159,6 +160,7 @@ export default function ConfiguracionPage() {
     setNewClientNombre('');
     setNewClientEmail('');
     setNewClientKeywordsList([]);
+    setNewClientGroupKeywordsList([]);
     setCreateClientSuccess(null);
     setCreateClientError(null);
     setIsTibDropdownOpen(false);
@@ -282,7 +284,10 @@ export default function ConfiguracionPage() {
     }
   };
 
-  const handleCreateClientSubmit = async (keywordsToSubmit: string[]) => {
+  const handleCreateClientSubmit = async (
+    exactKeywordsToSubmit: string[],
+    groupKeywordsToSubmit: string[]
+  ) => {
     setIsCreatingClient(true);
     setCreateClientError(null);
     setCreateClientSuccess(null);
@@ -294,7 +299,8 @@ export default function ConfiguracionPage() {
         body: JSON.stringify({
           nombre_completo: newClientNombre,
           email: newClientEmail,
-          alias_palabras_clave: keywordsToSubmit,
+          alias_palabras_clave: exactKeywordsToSubmit,
+          palabras_clave_grupo: groupKeywordsToSubmit,
         }),
       });
 
@@ -313,6 +319,7 @@ export default function ConfiguracionPage() {
       setNewClientNombre('');
       setNewClientEmail('');
       setNewClientKeywordsList([]);
+      setNewClientGroupKeywordsList([]);
       setIsTibDropdownOpen(false);
 
       fetchClientsList();
@@ -474,12 +481,8 @@ export default function ConfiguracionPage() {
   const assignedConsigneeMap = useMemo(() => {
     const map = new Map<string, { email: string; nombre_completo: string }>();
     for (const c of clientsList) {
-      if (isSuperadminEmail(c.email)) continue;
+      if (isSuperadminEmail(c.email) || c.activo === false) continue;
       const info = { email: c.email, nombre_completo: c.nombre_completo };
-      const cleanName = cleanExactString(c.nombre_completo);
-      if (cleanName && cleanName !== 'AMEX' && !map.has(cleanName)) {
-        map.set(cleanName, info);
-      }
       if (Array.isArray(c.alias_palabras_clave)) {
         for (const alias of c.alias_palabras_clave) {
           const cleanAlias = cleanExactString(alias);
@@ -503,6 +506,7 @@ export default function ConfiguracionPage() {
           c.nombre_completo,
           c.email,
           ...(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave : []),
+          ...(Array.isArray(c.palabras_clave_grupo) ? c.palabras_clave_grupo : []),
         ].join(' ')
       );
       return terms.every((term) => searchable.includes(term));
@@ -573,6 +577,8 @@ export default function ConfiguracionPage() {
         setNewClientEmail={setNewClientEmail}
         newClientKeywordsList={newClientKeywordsList}
         setNewClientKeywordsList={setNewClientKeywordsList}
+        newClientGroupKeywordsList={newClientGroupKeywordsList}
+        setNewClientGroupKeywordsList={setNewClientGroupKeywordsList}
         isCreatingClient={isCreatingClient}
         createClientSuccess={createClientSuccess}
         createClientError={createClientError}

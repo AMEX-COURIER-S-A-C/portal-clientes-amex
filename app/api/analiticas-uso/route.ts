@@ -3,6 +3,7 @@ import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { extractInternalUsername, isInternalStaffEmail } from '@/lib/portal/roles';
 import { cleanExactString } from '@/lib/portal/keywords';
+import { matchesConsigneeRule, normalizeMatchingRules } from '@/lib/portal/matching';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
       while (true) {
         const { data, error } = await portalAdmin
           .from('clientes_portal')
-          .select('id, email, nombre_completo, alias_palabras_clave, activo, creado_en')
+          .select('id, email, nombre_completo, alias_palabras_clave, palabras_clave_grupo, activo, creado_en')
           .order('nombre_completo', { ascending: true })
           .range(from, from + step - 1);
 
@@ -193,33 +194,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const clientKeywordsMap = new Map<string, string[]>();
-    const uniqueKeywords = new Set<string>();
+    const clientPackagesEstimatedMap = new Map<string, number>();
 
     for (const c of clients) {
       const email = c.email.toLowerCase();
-      const kwList: string[] = [];
-      if (Array.isArray(c.alias_palabras_clave)) {
-        for (const k of c.alias_palabras_clave) {
-          const clean = cleanExactString(k);
-          if (clean && clean.length >= 2 && clean !== 'AMEX' && !kwList.includes(clean)) {
-            kwList.push(clean);
-            uniqueKeywords.add(clean);
-          }
-        }
-      }
-      clientKeywordsMap.set(email, kwList);
-    }
+      const { exactConsignees, groupKeywords } = normalizeMatchingRules({
+        exactConsignees: c.alias_palabras_clave,
+        groupKeywords: c.palabras_clave_grupo,
+      });
 
-    const keywordMatchedConsignees = new Map<string, string[]>();
-    for (const kw of uniqueKeywords) {
-      const matched: string[] = [];
+      if (exactConsignees.length === 0 && groupKeywords.length === 0) {
+        clientPackagesEstimatedMap.set(email, 0);
+        continue;
+      }
+
+      let estimated = 0;
       for (const entry of catalogEntries) {
-        if (entry.name.includes(kw)) {
-          matched.push(entry.name);
+        if (matchesConsigneeRule(entry.name, exactConsignees, groupKeywords)) {
+          estimated += entry.total;
         }
       }
-      keywordMatchedConsignees.set(kw, matched);
+      clientPackagesEstimatedMap.set(email, estimated);
     }
 
     // 4. Eventos del período actual y del período anterior (paginado para superar el límite de 1,000)
@@ -573,19 +568,7 @@ export async function GET(req: NextRequest) {
       if (esAdmin) {
         paquetesEstimados = totalPaquetesSistema;
       } else {
-        const clientKeywords = clientKeywordsMap.get(email) || [];
-        if (clientKeywords.length > 0) {
-          const matchedConsignatarios = new Set<string>();
-          for (const kw of clientKeywords) {
-            const matchedList = keywordMatchedConsignees.get(kw) || [];
-            for (const name of matchedList) {
-              matchedConsignatarios.add(name);
-            }
-          }
-          for (const name of matchedConsignatarios) {
-            paquetesEstimados += catalogMap.get(name) || 0;
-          }
-        }
+        paquetesEstimados = clientPackagesEstimatedMap.get(email) || 0;
       }
 
       const ultimoLogin = authUser?.last_sign_in_at || stat.ultimoLogin || null;

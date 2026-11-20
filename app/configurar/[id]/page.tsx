@@ -6,7 +6,10 @@ import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { authFetch } from '@/lib/portal/authFetch';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
+import { cleanExactString } from '@/lib/portal/keywords';
+import { BLOCKED_GROUP_KEYWORDS } from '@/lib/portal/matching';
 import { ConfigurarClientePageSkeleton } from '@/components/ui/PortalSkeletons';
+import MatchingPreviewBox from '@/components/admin/MatchingPreviewBox';
 import {
   ArrowLeft,
   Settings,
@@ -47,6 +50,9 @@ export default function ConfigurarClientePage() {
   const [activo, setActivo] = useState(true);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
+  const [groupKeywords, setGroupKeywords] = useState<string[]>([]);
+  const [groupKeywordInput, setGroupKeywordInput] = useState('');
+  const [groupKeywordHint, setGroupKeywordHint] = useState<string | null>(null);
   const [paquetesVinculados, setPaquetesVinculados] = useState(0);
 
   // Estados de carga y guardado
@@ -159,6 +165,7 @@ export default function ConfigurarClientePage() {
       setEmail(c.email || '');
       setActivo(c.activo !== false);
       setKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave : []);
+      setGroupKeywords(Array.isArray(c.palabras_clave_grupo) ? c.palabras_clave_grupo : []);
       setPaquetesVinculados(data.paquetes_vinculados || 0);
     } catch (err: any) {
       setErrorMessage(err.message || 'Error al cargar el cliente');
@@ -211,6 +218,26 @@ export default function ConfigurarClientePage() {
     setKeywords(keywords.filter((_, i) => i !== index));
   };
 
+  const handleAddGroupKeyword = (rawWord: string) => {
+    const cleaned = cleanExactString(rawWord);
+    if (!cleaned) return;
+    if (cleaned.length < 3 || BLOCKED_GROUP_KEYWORDS.has(cleaned)) {
+      setGroupKeywordHint(
+        `No permitido ("${cleaned}"): las siglas de agencia requieren mínimo 3 letras y no pueden ser palabras genéricas como AMEX.`
+      );
+      return;
+    }
+    setGroupKeywordHint(null);
+    if (!groupKeywords.includes(cleaned)) {
+      setGroupKeywords([...groupKeywords, cleaned]);
+    }
+    setGroupKeywordInput('');
+  };
+
+  const handleRemoveGroupKeyword = (index: number) => {
+    setGroupKeywords(groupKeywords.filter((_, i) => i !== index));
+  };
+
   // 4. Guardar cambios
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,6 +253,7 @@ export default function ConfigurarClientePage() {
           id: clientId,
           nombre_completo: nombreCompleto,
           alias_palabras_clave: keywords,
+          palabras_clave_grupo: groupKeywords,
           activo: activo,
         }),
       });
@@ -334,22 +362,22 @@ export default function ConfigurarClientePage() {
         {/* Tarjeta de Formulario Principal */}
         <form onSubmit={handleSave} style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          {/* SECCIÓN 1: PALABRAS CLAVE (EL MATCHING OFICIAL TIB) */}
+          {/* SECCIÓN 1: CONSIGNATARIOS EXACTOS (MATCHING OFICIAL TIB) */}
           <div style={{ backgroundColor: '#f0f9ff', border: '1.5px solid #0284c7', borderRadius: '10px', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Tag style={{ width: '18px', height: '18px', color: '#0284c7' }} />
                 <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0369a1', margin: 0 }}>
-                  Palabras Clave de Matching Oficial TIB
+                  Consignatarios Exactos (Matching Oficial TIB)
                 </h3>
               </div>
               <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#0284c7', color: '#ffffff', padding: '2px 8px', borderRadius: '12px' }}>
-                Coincidencia Inteligente y Flexible
+                Coincidencia Exacta Segura
               </span>
             </div>
             
             <p style={{ margin: '0 0 14px', fontSize: '12.5px', color: '#0c4a6e', lineHeight: 1.5 }}>
-              Se asignarán automáticamente a este cliente todos los paquetes cuyo consignatario oficial coincida o contenga alguna de estas palabras clave (ejemplo: <strong>INK</strong> vinculará todos los <em>AMEX INK ...</em>, <strong>KENNETH MALDONADO</strong>, etc.).
+              Se asignarán únicamente los paquetes cuyo consignatario coincida de forma <strong>exacta</strong> (tolerando mayúsculas y espacios extra) con esta lista. Evita fugas hacia homónimos como <em>AMEX BRIGITTE → AMEX BRIGITTE CORDOVA</em>. Para agencias o couriers usa el bloque de <strong>Siglas de Agencia</strong> abajo.
             </p>
 
             {/* Lista Visual de Palabras Clave Activas */}
@@ -736,12 +764,127 @@ export default function ConfigurarClientePage() {
                     }}
                   >
                     <Plus style={{ width: '14px', height: '14px' }} />
-                    <span>Agregar</span>
+                    <span>Agregar exacto</span>
                   </button>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* SECCIÓN 1.B: SIGLAS / PREFIJOS DE AGENCIA (SOLO PALABRA COMPLETA) */}
+          <div style={{ backgroundColor: '#faf5ff', border: '1.5px solid #a855f7', borderRadius: '10px', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Tag style={{ width: '17px', height: '17px', color: '#7c3aed' }} />
+                <h3 style={{ fontSize: '14.5px', fontWeight: 800, color: '#5b21b6', margin: 0 }}>
+                  Siglas / Prefijos de Agencia o Courier (Palabra Completa)
+                </h3>
+              </div>
+              <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#7c3aed', color: '#ffffff', padding: '2px 8px', borderRadius: '12px' }}>
+                Opcional · Solo Couriers
+              </span>
+            </div>
+            <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#6b21a8', lineHeight: 1.5 }}>
+              Úsalo solo cuando esta cuenta sea una agencia/courier (ej. <strong>RUTA</strong>, <strong>AMC</strong>, <strong>MDS</strong>). Evalúa estrictamente por <strong>palabra completa</strong> (nunca subcadenas parciales como <em>AURA → LAURA</em>). El campo <em>Nombre Completo</em> ya no se inyecta de forma oculta.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px', minHeight: '36px', padding: '9px', backgroundColor: '#ffffff', border: '1px solid #e9d5ff', borderRadius: '8px' }}>
+              {groupKeywords.length === 0 ? (
+                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                  Sin siglas de grupo. Ideal para clientes individuales (usa únicamente los Consignatarios Exactos de arriba).
+                </span>
+              ) : (
+                groupKeywords.map((gk, idx) => (
+                  <span
+                    key={gk}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      backgroundColor: '#f3e8ff',
+                      color: '#6b21a8',
+                      border: '1px solid #d8b4fe',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    <span>Sigla: {gk}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveGroupKeyword(idx)}
+                      style={{ background: 'none', border: 'none', color: '#6b21a8', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                      title="Eliminar sigla de grupo"
+                    >
+                      <Trash2 style={{ width: '13px', height: '13px' }} />
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                value={groupKeywordInput}
+                onChange={(e) => setGroupKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    handleAddGroupKeyword(groupKeywordInput);
+                  }
+                }}
+                placeholder="Ej: RUTA, AMC, MDS (mín. 3 letras)..."
+                style={{
+                  flex: '1 1 220px',
+                  height: '40px',
+                  padding: '0 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #d8b4fe',
+                  fontSize: '12.5px',
+                  backgroundColor: '#ffffff',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => handleAddGroupKeyword(groupKeywordInput)}
+                disabled={!groupKeywordInput.trim()}
+                style={{
+                  height: '40px',
+                  backgroundColor: '#7c3aed',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '0 14px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: groupKeywordInput.trim() ? 'pointer' : 'not-allowed',
+                  opacity: groupKeywordInput.trim() ? 1 : 0.6,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                <Plus style={{ width: '14px', height: '14px' }} />
+                <span>Agregar sigla</span>
+              </button>
+            </div>
+
+            {groupKeywordHint && (
+              <div style={{ marginTop: '8px', fontSize: '11.5px', fontWeight: 600, color: '#b45309' }}>
+                {groupKeywordHint}
+              </div>
+            )}
+          </div>
+
+          {/* SIMULADOR DE IMPACTO EN VIVO */}
+          <MatchingPreviewBox
+            exactConsignees={keywords}
+            groupKeywords={groupKeywords}
+            excludeClientId={clientId}
+          />
 
           {/* SECCIÓN 2: INFORMACIÓN GENERAL DEL CLIENTE */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '18px' }}>

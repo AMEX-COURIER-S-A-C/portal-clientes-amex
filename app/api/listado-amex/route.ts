@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuthSession } from '@/lib/supabase/auth-guard';
 import { getClientKeywords } from '@/lib/portal/clientFilter';
-import { sanitizePostgrestFilterTerm } from '@/lib/portal/keywords';
+import { buildPostgrestMatchingOrFilter } from '@/lib/portal/matching';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,18 +23,12 @@ export async function GET(req: Request) {
     // Si es un cliente regular, consultar directamente la tabla pre-calculada amex_portal_clientes
     // filtrando por las palabras clave del cliente (evita el truncamiento a 1,000 filas de paquetes_portal)
     if (isRegularClient) {
-      const [clientInfo, profileRes] = await Promise.all([
-        getClientKeywords(supabase, email),
-        supabase
-          .from('clientes_portal')
-          .select('nombre_completo, alias_palabras_clave')
-          .eq('email', email)
-          .maybeSingle(),
-      ]);
-
-      const safeKeywords = clientInfo.keywords
-        .map((kw) => sanitizePostgrestFilterTerm(kw))
-        .filter((kw) => kw.length >= 2);
+      const clientInfo = await getClientKeywords(supabase, email);
+      const orConditions = buildPostgrestMatchingOrFilter(
+        'nombre',
+        clientInfo.exactConsignees,
+        clientInfo.groupKeywords
+      );
 
       const statsMap = new Map<
         string,
@@ -48,11 +42,7 @@ export async function GET(req: Request) {
         }
       >();
 
-      if (safeKeywords.length > 0) {
-        const orConditions = safeKeywords
-          .map((kw) => `nombre.ilike.*${kw}*`)
-          .join(',');
-
+      if (orConditions) {
         const pageSize = 1000;
         let from = 0;
         while (true) {
@@ -86,12 +76,9 @@ export async function GET(req: Request) {
         }
       }
 
-      // Incluir también alias configurados en su perfil aunque aún tengan 0 paquetes
-      const aliases = Array.isArray(profileRes.data?.alias_palabras_clave)
-        ? profileRes.data.alias_palabras_clave
-        : [];
-      for (const alias of aliases) {
-        const cleanAlias = String(alias || '').trim().toUpperCase();
+      // Incluir también consignatarios exactos configurados aunque aún tengan 0 paquetes
+      for (const exactAlias of clientInfo.exactConsignees) {
+        const cleanAlias = String(exactAlias || '').trim().toUpperCase();
         if (cleanAlias && cleanAlias !== 'AMEX' && !statsMap.has(cleanAlias)) {
           statsMap.set(cleanAlias, {
             id: cleanAlias,

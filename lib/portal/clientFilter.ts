@@ -1,19 +1,27 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { cleanExactString, sanitizePostgrestFilterTerm } from './keywords';
 import { isSuperadminEmail } from './superadmin';
 import { isInternalStaffEmail } from './roles';
+import {
+  buildPostgrestMatchingOrFilter,
+  normalizeMatchingRules,
+} from './matching';
 
 export interface ClientKeywordsInfo {
   isSuperadmin: boolean;
   isInternalStaff: boolean;
   hasGlobalWarehouseAccess: boolean;
   cleanEmail: string;
+  exactConsignees: string[];
+  groupKeywords: string[];
+  /** Unión solo informativa (compatibilidad con lectores existentes) */
   keywords: string[];
 }
 
 /**
- * Obtiene las palabras clave y siglas asignadas a un cliente desde clientes_portal,
- * o concede acceso global de Warehouse a cuentas Superadmin y usuarios internos activos.
+ * Obtiene las reglas de matching explícitas asignadas a un cliente desde clientes_portal
+ * (`alias_palabras_clave` exactos + `palabras_clave_grupo` por palabra completa),
+ * sin inyectar `nombre_completo` de forma oculta.
+ * Concede acceso global de Warehouse a Superadmin y usuarios internos activos.
  */
 export async function getClientKeywords(
   portalAdmin: SupabaseClient,
@@ -26,6 +34,8 @@ export async function getClientKeywords(
       isInternalStaff: false,
       hasGlobalWarehouseAccess: false,
       cleanEmail: '',
+      exactConsignees: [],
+      groupKeywords: [],
       keywords: [],
     };
   }
@@ -37,6 +47,8 @@ export async function getClientKeywords(
       isInternalStaff: false,
       hasGlobalWarehouseAccess: true,
       cleanEmail,
+      exactConsignees: [],
+      groupKeywords: [],
       keywords: [],
     };
   }
@@ -54,62 +66,56 @@ export async function getClientKeywords(
       isInternalStaff: isActiveStaff,
       hasGlobalWarehouseAccess: isActiveStaff,
       cleanEmail: isActiveStaff ? cleanEmail : '',
+      exactConsignees: [],
+      groupKeywords: [],
       keywords: [],
     };
   }
 
   const { data: profile } = await portalAdmin
     .from('clientes_portal')
-    .select('alias_palabras_clave, nombre_completo')
+    .select('alias_palabras_clave, palabras_clave_grupo')
     .eq('email', cleanEmail)
     .maybeSingle();
 
-  const validKeywords: string[] = [];
-
-  if (profile) {
-    if (Array.isArray(profile.alias_palabras_clave)) {
-      for (const k of profile.alias_palabras_clave) {
-        const clean = cleanExactString(k);
-        // Excluir cadenas vacías o la palabra genérica 'AMEX'
-        if (clean && clean.length >= 2 && clean !== 'AMEX' && !validKeywords.includes(clean)) {
-          validKeywords.push(clean);
-        }
-      }
-    }
-    const cleanNombre = cleanExactString(profile.nombre_completo);
-    if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX' && !validKeywords.includes(cleanNombre)) {
-      validKeywords.push(cleanNombre);
-    }
-  }
+  const { exactConsignees, groupKeywords } = normalizeMatchingRules({
+    exactConsignees: profile?.alias_palabras_clave,
+    groupKeywords: profile?.palabras_clave_grupo,
+    isSuperadmin: false,
+    applyFallbackWhenEmpty: false,
+  });
 
   return {
     isSuperadmin: false,
     isInternalStaff: false,
     hasGlobalWarehouseAccess: false,
     cleanEmail,
-    keywords: validKeywords,
+    exactConsignees,
+    groupKeywords,
+    keywords: [...exactConsignees, ...groupKeywords],
   };
 }
 
 /**
- * Aplica el filtro dinámico de cliente a cualquier consulta de paquetes_portal en Supabase.
- * - Si es Superadmin o usuario interno activo: acceso global irrestricto a todos los paquetes.
- * - Si tiene siglas/palabras clave asignadas: muestra los paquetes donde nombre_consignatario coincida con sus siglas.
- * - Si no tiene palabras clave: filtra por su usuario_email.
+ * Aplica el filtro dinámico de cliente a cualquier consulta de paquetes_portal en Supabase:
+ * - Superadmin o usuario interno activo: acceso global irrestricto.
+ * - Cliente con reglas exactas o de grupo: filtro PostgREST `imatch` unificado
+ *   (coincidencia exacta normalizada para `alias_palabras_clave` y palabra completa `\yTERM\y` para `palabras_clave_grupo`).
+ * - Sin reglas configuradas: filtra estrictamente por `usuario_email`.
  */
 export function applyClientScopeFilter(query: any, info: ClientKeywordsInfo): any {
   if (info.isSuperadmin || info.hasGlobalWarehouseAccess) {
     return query;
   }
 
-  if (info.keywords.length > 0) {
-    const conditions = info.keywords
-      .map((kw) => kw.replace(/["'(),]/g, '').trim())
-      .filter((safeKw) => safeKw.length >= 2)
-      .map((safeKw) => `nombre_consignatario.ilike.*${safeKw}*`);
-    if (conditions.length > 0) {
-      return query.or(conditions.join(','));
-    }
+  const orFilter = buildPostgrestMatchingOrFilter(
+    'nombre_consignatario',
+    info.exactConsignees,
+    info.groupKeywords
+  );
+
+  if (orFilter) {
+    return query.or(orFilter);
   }
 
   if (!info.cleanEmail) {

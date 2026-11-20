@@ -185,17 +185,29 @@ export default function AdminConfigView({
 
       {/* Fila de Tarjetas de Resumen Técnico */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '16px' }}>
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
-            Clientes Registrados en Portal
-          </span>
-          <div style={{ fontSize: '26px', fontWeight: 900, color: '#ff5722', marginTop: '4px' }}>
-            {clientsList.length}
-          </div>
-          <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0 0' }}>
-            Usuarios con acceso activo a su casillero personal.
-          </p>
-        </div>
+        {(() => {
+          const regularClients = clientsList.filter((c) => !isSuperadminEmail(c.email));
+          const activeRegularCount = regularClients.filter((c) => c.activo !== false).length;
+          const inactiveRegularCount = regularClients.length - activeRegularCount;
+          const superadminCount = clientsList.length - regularClients.length;
+          return (
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+                Clientes Activos en Portal
+              </span>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#ff5722', marginTop: '4px' }}>
+                {activeRegularCount}
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b', marginLeft: '6px' }}>
+                  / {regularClients.length} clientes
+                </span>
+              </div>
+              <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0 0' }}>
+                {inactiveRegularCount > 0 ? `${inactiveRegularCount} desactivado${inactiveRegularCount === 1 ? '' : 's'}` : 'Sin cuentas desactivadas'}
+                {superadminCount > 0 ? ` • ${superadminCount} superadmin${superadminCount === 1 ? '' : 's'}` : ''}
+              </p>
+            </div>
+          );
+        })()}
 
         <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
@@ -540,7 +552,8 @@ export default function AdminConfigView({
                               <ShieldCheck style={{ width: '11px', height: '11px', color: '#ea580c' }} />
                               <span>Acceso Global (Todos los paquetes)</span>
                             </span>
-                          ) : Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
+                          ) : (Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0) ||
+                            (Array.isArray(c.palabras_clave_grupo) && c.palabras_clave_grupo.length > 0) ? (
                             <div style={{ position: 'relative', display: 'inline-block' }}>
                               <button
                                 type="button"
@@ -562,23 +575,44 @@ export default function AdminConfigView({
                                   color: '#374151',
                                   cursor: 'pointer',
                                   transition: 'all 0.15s ease',
+                                  flexWrap: 'wrap',
                                 }}
                               >
-                                <span
-                                  style={{
-                                    backgroundColor: '#374151',
-                                    color: '#ffffff',
-                                    borderRadius: '10px',
-                                    padding: '1px 6px',
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {c.alias_palabras_clave.length}
-                                </span>
-                                <span>
-                                  {c.alias_palabras_clave.length === 1 ? 'consignatario' : 'consignatarios'}
-                                </span>
+                                {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 && (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                    <span
+                                      style={{
+                                        backgroundColor: '#374151',
+                                        color: '#ffffff',
+                                        borderRadius: '10px',
+                                        padding: '1px 6px',
+                                        fontSize: '10px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {c.alias_palabras_clave.length}
+                                    </span>
+                                    <span>
+                                      {c.alias_palabras_clave.length === 1 ? 'exacto' : 'exactos'}
+                                    </span>
+                                  </span>
+                                )}
+                                {Array.isArray(c.palabras_clave_grupo) && c.palabras_clave_grupo.length > 0 && (
+                                  <span
+                                    style={{
+                                      backgroundColor: '#f5f3ff',
+                                      color: '#6d28d9',
+                                      border: '1px solid #ddd6fe',
+                                      borderRadius: '10px',
+                                      padding: '1px 6px',
+                                      fontSize: '10px',
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    {c.palabras_clave_grupo.length}{' '}
+                                    {c.palabras_clave_grupo.length === 1 ? 'sigla' : 'siglas'}
+                                  </span>
+                                )}
                                 <ChevronDown
                                   style={{
                                     width: '12px',
@@ -592,7 +626,7 @@ export default function AdminConfigView({
                             </div>
                           ) : (
                             <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '11.5px' }}>
-                              Sin consignatarios extra
+                              Sin reglas asignadas
                             </span>
                           )}
                         </td>

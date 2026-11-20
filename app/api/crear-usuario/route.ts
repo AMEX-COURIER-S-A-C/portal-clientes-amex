@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
-import { normalizeClientKeywordsInput } from '@/lib/portal/keywords';
+import { normalizeMatchingRules } from '@/lib/portal/matching';
 import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
 import { generateClientAuthLink, getPortalBaseUrl, toBrandedAuthLink } from '@/lib/portal/portal-urls';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
@@ -18,6 +18,7 @@ export async function POST(req: Request) {
       nombre_completo,
       email,
       alias_palabras_clave,
+      palabras_clave_grupo,
     } = body;
 
     if (!nombre_completo || !nombre_completo.trim()) {
@@ -31,7 +32,13 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanNombre = nombre_completo.trim().toUpperCase();
     const isSuperadmin = isSuperadminEmail(cleanEmail);
-    const keywords = normalizeClientKeywordsInput(alias_palabras_clave, cleanNombre, isSuperadmin);
+    const { exactConsignees, groupKeywords } = normalizeMatchingRules({
+      exactConsignees: alias_palabras_clave,
+      groupKeywords: palabras_clave_grupo,
+      fallbackNombre: cleanNombre,
+      isSuperadmin,
+      applyFallbackWhenEmpty: true,
+    });
 
     // 1. Verificar si ya existe en clientes_portal
     const { data: existingClient } = await portalAdmin
@@ -80,7 +87,8 @@ export async function POST(req: Request) {
         id: finalUserId,
         nombre_completo: cleanNombre,
         email: cleanEmail,
-        alias_palabras_clave: keywords,
+        alias_palabras_clave: exactConsignees,
+        palabras_clave_grupo: groupKeywords,
         activo: true,
       })
       .select()

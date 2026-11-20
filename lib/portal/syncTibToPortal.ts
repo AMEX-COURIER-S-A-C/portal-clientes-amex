@@ -1,11 +1,12 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getTibApiCredentials, normalizeTibWr, TIB_MEDIA_BASE_URL } from '@/lib/tib/apiClient';
+import { cleanExactString } from '@/lib/portal/keywords';
 import {
-  buildValidMatchingTerms,
-  cleanExactString,
-  sanitizePostgrestFilterTerm,
-} from '@/lib/portal/keywords';
+  buildPostgrestMatchingOrFilter,
+  matchesConsigneeRule,
+  normalizeMatchingRules,
+} from '@/lib/portal/matching';
 
 export { ADMIN_MASTER_EMAIL, cleanExactString };
 
@@ -62,7 +63,7 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   while (true) {
     const { data: pageClients, error: cErr } = await portalAdmin
       .from('clientes_portal')
-      .select('id, email, nombre_completo, alias_palabras_clave')
+      .select('id, email, nombre_completo, alias_palabras_clave, palabras_clave_grupo')
       .eq('activo', true)
       .range(clientOffset, clientOffset + PAGE_SIZE - 1);
 
@@ -222,25 +223,50 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     }
   }
 
-  // 3. Determinar qué clientes regulares procesar (excluyendo todas las cuentas Superadmin)
-  const regularClientsToProcess = clientesList.filter((c) => {
-    const email = c.email?.trim().toLowerCase();
-    if (!email || isSuperadminEmail(email)) return false;
-    if (isSpecificRegularClient) return email === specificTarget;
-    return true;
-  });
+  // 3. Pre-normalizar reglas de TODOS los clientes regulares activos para evitar guerras de escritura en cuentas compartidas
+  const activeRegularClients = clientesList
+    .filter((c) => {
+      const email = c.email?.trim().toLowerCase();
+      return Boolean(email && !isSuperadminEmail(email));
+    })
+    .map((c) => ({
+      id: c.id as string | null,
+      email: c.email.trim().toLowerCase() as string,
+      rules: normalizeMatchingRules({
+        exactConsignees: c.alias_palabras_clave,
+        groupKeywords: c.palabras_clave_grupo,
+      }),
+    }));
 
-  // 4. Ejecutar cruce diferencial en PostgreSQL por cada cliente regular y sus palabras clave
-  //    Combinando los términos por cliente en una sola condición .or() para minimizar viajes HTTP.
+  const activeClientByEmail = new Map(activeRegularClients.map((c) => [c.email, c]));
+
+  const findOtherActiveOwner = (consigneeName: string | null | undefined, excludeEmail: string) => {
+    for (const candidate of activeRegularClients) {
+      if (candidate.email === excludeEmail) continue;
+      if (
+        matchesConsigneeRule(
+          consigneeName,
+          candidate.rules.exactConsignees,
+          candidate.rules.groupKeywords
+        )
+      ) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  const regularClientsToProcess = isSpecificRegularClient
+    ? activeRegularClients.filter((c) => c.email === specificTarget)
+    : activeRegularClients;
+
+  // 4. Ejecutar cruce diferencial en PostgreSQL por cada cliente regular usando el motor unificado
   for (const client of regularClientsToProcess) {
-    const targetEmail = client.email.trim().toLowerCase();
-    const termsArray = buildValidMatchingTerms(
-      client.nombre_completo,
-      client.alias_palabras_clave,
-      isSpecificRegularClient
-    );
+    const targetEmail = client.email;
+    const { exactConsignees, groupKeywords } = client.rules;
 
-    // Si se editó un cliente específico, liberar únicamente los paquetes que ya no coincidan con sus alias actuales
+    // Si se editó un cliente específico, liberar únicamente los paquetes que ya no coincidan con sus reglas actuales,
+    // respetando a cualquier otro cliente activo que comparta el mismo consignatario (ej. cuentas compartidas).
     if (isSpecificRegularClient) {
       const currentClientPkgs: any[] = [];
       let pkgFrom = 0;
@@ -257,15 +283,27 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
         pkgFrom += PAGE_SIZE;
       }
 
-      const idsToRelease = currentClientPkgs
-        .filter((pkg) => {
-          const cName = cleanExactString(pkg.nombre_consignatario);
-          const compactName = cName.replace(/\s+/g, '');
-          return !termsArray.some((t) => cName.includes(t) || (t.length >= 5 && compactName.includes(t)));
-        })
-        .map((pkg) => pkg.id);
+      const idsToSuperadmin: string[] = [];
+      const reassignByOwner = new Map<string, { id: string | null; ids: string[] }>();
 
-      if (idsToRelease.length > 0) {
+      for (const pkg of currentClientPkgs) {
+        if (matchesConsigneeRule(pkg.nombre_consignatario, exactConsignees, groupKeywords)) {
+          continue;
+        }
+        const coOwner = findOtherActiveOwner(pkg.nombre_consignatario, targetEmail);
+        if (coOwner) {
+          let entry = reassignByOwner.get(coOwner.email);
+          if (!entry) {
+            entry = { id: coOwner.id, ids: [] };
+            reassignByOwner.set(coOwner.email, entry);
+          }
+          entry.ids.push(pkg.id);
+        } else {
+          idsToSuperadmin.push(pkg.id);
+        }
+      }
+
+      if (idsToSuperadmin.length > 0) {
         const resetPayload: Record<string, any> = {
           usuario_email: ADMIN_MASTER_EMAIL,
           actualizado_en: new Date().toISOString(),
@@ -273,58 +311,96 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
         if (hasUsuarioIdColumn) {
           resetPayload.usuario_id = superadminId;
         }
-        for (let i = 0; i < idsToRelease.length; i += 500) {
-          const idChunk = idsToRelease.slice(i, i + 500);
+        for (let i = 0; i < idsToSuperadmin.length; i += 500) {
+          const idChunk = idsToSuperadmin.slice(i, i + 500);
           await portalAdmin
             .from('paquetes_portal')
             .update(resetPayload)
             .in('id', idChunk);
         }
       }
+
+      for (const [coEmail, coData] of reassignByOwner.entries()) {
+        const coPayload: Record<string, any> = {
+          usuario_email: coEmail,
+          actualizado_en: new Date().toISOString(),
+        };
+        if (hasUsuarioIdColumn && coData.id) {
+          coPayload.usuario_id = coData.id;
+        }
+        for (let i = 0; i < coData.ids.length; i += 500) {
+          await portalAdmin
+            .from('paquetes_portal')
+            .update(coPayload)
+            .in('id', coData.ids.slice(i, i + 500));
+        }
+      }
     }
 
-    if (termsArray.length === 0) continue;
+    const orFilter = buildPostgrestMatchingOrFilter(
+      'nombre_consignatario',
+      exactConsignees,
+      groupKeywords
+    );
+    if (!orFilter) continue;
 
-    const updatePayload: Record<string, any> = {
-      usuario_email: targetEmail,
-      actualizado_en: new Date().toISOString(),
-    };
-    if (hasUsuarioIdColumn) {
-      updatePayload.usuario_id = client.id;
+    // Consultar paquetes que coinciden pero aún no apuntan a targetEmail y filtrar aquellos
+    // que ya pertenecen a otro cliente activo co-propietario (evita guerra de escritura en multi-cuenta).
+    const idsToClaim: string[] = [];
+    let matchFrom = 0;
+    while (true) {
+      const { data: matchedRows } = await portalAdmin
+        .from('paquetes_portal')
+        .select('id, usuario_email, nombre_consignatario')
+        .or(orFilter)
+        .neq('usuario_email', targetEmail)
+        .range(matchFrom, matchFrom + PAGE_SIZE - 1);
+
+      if (!matchedRows || matchedRows.length === 0) break;
+
+      for (const row of matchedRows) {
+        const currentOwnerEmail = String(row.usuario_email || '').trim().toLowerCase();
+        const currentOwner = activeClientByEmail.get(currentOwnerEmail);
+        const ownedByValidCoOwner =
+          Boolean(currentOwner) &&
+          matchesConsigneeRule(
+            row.nombre_consignatario,
+            currentOwner!.rules.exactConsignees,
+            currentOwner!.rules.groupKeywords
+          );
+
+        if (!ownedByValidCoOwner) {
+          idsToClaim.push(row.id);
+        }
+      }
+
+      if (matchedRows.length < PAGE_SIZE) break;
+      matchFrom += PAGE_SIZE;
     }
 
-    const safeTerms = termsArray
-      .map((term) => sanitizePostgrestFilterTerm(term))
-      .filter((term) => term.length >= 2);
-
-    if (safeTerms.length === 1) {
-      const diffFilter = hasUsuarioIdColumn
-        ? `usuario_email.neq.${targetEmail},usuario_id.is.null`
-        : `usuario_email.neq.${targetEmail}`;
-
-      await portalAdmin
-        .from('paquetes_portal')
-        .update(updatePayload)
-        .ilike('nombre_consignatario', `%${safeTerms[0]}%`)
-        .or(diffFilter);
-    } else if (safeTerms.length > 1) {
-      const consigneeOrFilter = safeTerms
-        .map((term) => `nombre_consignatario.ilike.*${term}*`)
-        .join(',');
-
-      await portalAdmin
-        .from('paquetes_portal')
-        .update(updatePayload)
-        .or(consigneeOrFilter)
-        .neq('usuario_email', targetEmail);
-
+    if (idsToClaim.length > 0) {
+      const updatePayload: Record<string, any> = {
+        usuario_email: targetEmail,
+        actualizado_en: new Date().toISOString(),
+      };
       if (hasUsuarioIdColumn && client.id) {
+        updatePayload.usuario_id = client.id;
+      }
+
+      for (let i = 0; i < idsToClaim.length; i += 500) {
         await portalAdmin
           .from('paquetes_portal')
-          .update({ usuario_id: client.id })
-          .eq('usuario_email', targetEmail)
-          .is('usuario_id', null);
+          .update(updatePayload)
+          .in('id', idsToClaim.slice(i, i + 500));
       }
+    }
+
+    if (hasUsuarioIdColumn && client.id) {
+      await portalAdmin
+        .from('paquetes_portal')
+        .update({ usuario_id: client.id })
+        .eq('usuario_email', targetEmail)
+        .is('usuario_id', null);
     }
   }
 

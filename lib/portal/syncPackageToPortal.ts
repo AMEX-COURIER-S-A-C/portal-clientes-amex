@@ -1,5 +1,6 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
 import { ADMIN_MASTER_EMAIL, isSuperadminEmail } from '@/lib/portal/superadmin';
+import { matchesConsigneeRule, normalizeMatchingRules } from '@/lib/portal/matching';
 
 export interface PaqueteSyncData {
   id?: string;
@@ -33,7 +34,7 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
   while (true) {
     const { data, error: cErr } = await portalAdmin
       .from('clientes_portal')
-      .select('email, nombre_completo, alias_palabras_clave')
+      .select('email, nombre_completo, alias_palabras_clave, palabras_clave_grupo')
       .eq('activo', true)
       .range(from, from + pageSize - 1);
 
@@ -47,42 +48,24 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
     from += pageSize;
   }
 
-  const clientesList = clientes.filter((c) => !isSuperadminEmail(c.email));
+  const clientesList = clientes
+    .filter((c) => !isSuperadminEmail(c.email))
+    .map((c) => ({
+      email: c.email.trim().toLowerCase(),
+      rules: normalizeMatchingRules({
+        exactConsignees: c.alias_palabras_clave,
+        groupKeywords: c.palabras_clave_grupo,
+      }),
+    }));
 
-  // Función para encontrar el email del cliente por coincidencia de nombre o alias (con y sin espacios)
+  // Motor unificado: coincidencia exacta normalizada + siglas de agencia por palabra completa
   const findClientEmail = (consignatario: string, explicitEmail?: string | null): string | null => {
     if (explicitEmail && explicitEmail.includes('@')) return explicitEmail.trim().toLowerCase();
     if (!consignatario) return null;
 
-    const cleanConsignee = consignatario.trim().toUpperCase();
-    const compactConsignee = cleanConsignee.replace(/\s+/g, '');
-
     for (const c of clientesList) {
-      const cName = c.nombre_completo.trim().toUpperCase();
-      const compactName = cName.replace(/\s+/g, '');
-      // Coincidencia exacta, contenida o compactada sin espacios (ej. ARIA SHOP <-> ARIASHOP)
-      if (
-        cleanConsignee.includes(cName) ||
-        cName.includes(cleanConsignee) ||
-        (compactName.length >= 5 && compactConsignee.includes(compactName))
-      ) {
-        return c.email.toLowerCase();
-      }
-
-      // Comprobar alias o palabras clave
-      if (Array.isArray(c.alias_palabras_clave)) {
-        for (const alias of c.alias_palabras_clave) {
-          const cleanAlias = String(alias).trim().toUpperCase();
-          const compactAlias = cleanAlias.replace(/\s+/g, '');
-          if (
-            cleanAlias &&
-            (cleanConsignee.includes(cleanAlias) ||
-              cleanAlias.includes(cleanConsignee) ||
-              (compactAlias.length >= 5 && compactConsignee.includes(compactAlias)))
-          ) {
-            return c.email.toLowerCase();
-          }
-        }
+      if (matchesConsigneeRule(consignatario, c.rules.exactConsignees, c.rules.groupKeywords)) {
+        return c.email;
       }
     }
 

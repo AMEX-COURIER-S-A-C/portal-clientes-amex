@@ -1059,19 +1059,27 @@ async function runMirrorSyncCycle() {
       .limit(1);
     const hasUsuarioIdColumn = !colCheckErr;
 
-    // 1. Obtener directorio de clientes registrados en tiempo real
+    // 1. Obtener directorio de clientes registrados en tiempo real (exactos + siglas de grupo)
     const { data: clientes, error: cErr } = await sb
       .from('clientes_portal')
-      .select('id, email, nombre_completo, alias_palabras_clave')
+      .select('id, email, nombre_completo, alias_palabras_clave, palabras_clave_grupo')
       .eq('activo', true);
 
     if (cErr) throw new Error(`Fallo al leer clientes_portal: ${cErr.message}`);
+
+    const BLOCKED_GROUP_KEYWORDS = new Set(['AMEX', 'COURIER', 'PERU', 'MIAMI', 'LIMA', 'SAC', 'S.A.C', 'EIRL', 'SRL']);
+    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const buildWordBoundaryRegex = (term) => {
+      const tokens = cleanExactString(term).split(' ').filter(Boolean).map(escapeRegex);
+      if (tokens.length === 0) return null;
+      return new RegExp(`(?:^|[^A-Z0-9ÁÉÍÓÚÜÑ])${tokens.join('\\s+')}(?:$|[^A-Z0-9ÁÉÍÓÚÜÑ])`, 'i');
+    };
 
     const nclientExactMap = new Map(); // cleanConsignee -> Set<email>
     const iclientMap = new Map();       // cleanIclient -> Set<email>
     const clientDetailsMap = new Map(); // email -> name
     const clientIdMap = new Map();      // email -> id
-    const keywordInclusionList = [];    // { keyword, email }
+    const groupKeywordRules = [];       // { keyword, regex, email }
 
     function addExactMapping(map, key, email) {
       if (!map.has(key)) map.set(key, new Set());
@@ -1084,24 +1092,32 @@ async function runMirrorSyncCycle() {
       if (c.id) clientIdMap.set(email, c.id);
       if (SUPERADMIN_EMAILS.has(email)) continue;
 
-      const cleanNombre = cleanExactString(c.nombre_completo);
-      if (cleanNombre && cleanNombre.length >= 3 && cleanNombre !== 'AMEX') {
-        addExactMapping(nclientExactMap, cleanNombre, email);
-        keywordInclusionList.push({ keyword: cleanNombre, email });
-      }
-
+      // Motor unificado: NO se inyecta nombre_completo de forma oculta.
+      // 1) alias_palabras_clave -> coincidencia exacta normalizada
       if (Array.isArray(c.alias_palabras_clave)) {
         for (const alias of c.alias_palabras_clave) {
           const cleanAlias = cleanExactString(alias);
           if (cleanAlias && cleanAlias.length >= 2 && cleanAlias !== 'AMEX') {
             addExactMapping(nclientExactMap, cleanAlias, email);
-            keywordInclusionList.push({ keyword: cleanAlias, email });
+          }
+        }
+      }
+
+      // 2) palabras_clave_grupo -> coincidencia por palabra completa (solo siglas/agencias)
+      if (Array.isArray(c.palabras_clave_grupo)) {
+        for (const groupKw of c.palabras_clave_grupo) {
+          const cleanGroup = cleanExactString(groupKw);
+          if (cleanGroup && cleanGroup.length >= 3 && !BLOCKED_GROUP_KEYWORDS.has(cleanGroup)) {
+            const regex = buildWordBoundaryRegex(cleanGroup);
+            if (regex) {
+              groupKeywordRules.push({ keyword: cleanGroup, regex, email });
+            }
           }
         }
       }
     }
 
-    keywordInclusionList.sort((a, b) => b.keyword.length - a.keyword.length);
+    groupKeywordRules.sort((a, b) => b.keyword.length - a.keyword.length);
 
     console.log(`[TIB-MIRROR] Clientes activos monitoreados: ${clientDetailsMap.size}`);
 
@@ -1164,7 +1180,7 @@ async function runMirrorSyncCycle() {
 
       const matchedEmails = new Set();
 
-      // Regla 1: Coincidencia exacta o por inclusión de palabras clave (soporta multi-cuenta compartida)
+      // Regla 1: Coincidencia exacta (alias_palabras_clave) o palabra completa (palabras_clave_grupo)
       if (cleanConsignee && nclientExactMap.has(cleanConsignee)) {
         for (const e of nclientExactMap.get(cleanConsignee)) matchedEmails.add(e);
       }
@@ -1172,9 +1188,9 @@ async function runMirrorSyncCycle() {
         for (const e of iclientMap.get(cleanIclient)) matchedEmails.add(e);
       }
       if (cleanConsignee) {
-        for (const kwItem of keywordInclusionList) {
-          if (cleanConsignee.includes(kwItem.keyword)) {
-            matchedEmails.add(kwItem.email);
+        for (const grpRule of groupKeywordRules) {
+          if (grpRule.regex.test(cleanConsignee)) {
+            matchedEmails.add(grpRule.email);
           }
         }
       }

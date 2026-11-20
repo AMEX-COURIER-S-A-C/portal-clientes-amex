@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireSuperadminSession } from '@/lib/supabase/auth-guard';
 import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
-import { normalizeClientKeywordsInput } from '@/lib/portal/keywords';
+import { normalizeMatchingRules } from '@/lib/portal/matching';
 import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { getClientKeywords, applyClientScopeFilter } from '@/lib/portal/clientFilter';
 
@@ -59,6 +59,7 @@ export async function PUT(req: Request) {
       id,
       nombre_completo,
       alias_palabras_clave,
+      palabras_clave_grupo,
       activo,
     } = body;
 
@@ -84,12 +85,20 @@ export async function PUT(req: Request) {
 
     const isSuperadminTarget = isSuperadminEmail(existingClient.email);
     const cleanNombre = nombre_completo ? String(nombre_completo).trim().toUpperCase() : existingClient.nombre_completo;
-    const keywords = normalizeClientKeywordsInput(alias_palabras_clave, cleanNombre, isSuperadminTarget);
+    const { exactConsignees, groupKeywords } = normalizeMatchingRules({
+      exactConsignees:
+        alias_palabras_clave !== undefined ? alias_palabras_clave : existingClient.alias_palabras_clave,
+      groupKeywords:
+        palabras_clave_grupo !== undefined ? palabras_clave_grupo : existingClient.palabras_clave_grupo,
+      isSuperadmin: isSuperadminTarget,
+      applyFallbackWhenEmpty: false,
+    });
 
     // 2. Actualizar registro en public.clientes_portal (protegiendo estado activo de Superadmin)
     const updatePayload: Record<string, any> = {
       nombre_completo: cleanNombre,
-      alias_palabras_clave: keywords,
+      alias_palabras_clave: exactConsignees,
+      palabras_clave_grupo: groupKeywords,
       actualizado_en: new Date().toISOString(),
     };
 
