@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { authFetch } from '@/lib/portal/authFetch';
 import { AnaliticasPageSkeleton, AuditTimelineSkeleton } from '@/components/ui/PortalSkeletons';
+import TablePaginationBar from '@/components/ui/TablePaginationBar';
 import InternalAuditSection, { InternalAuditData } from '@/components/analytics/InternalAuditSection';
 import {
   Users,
@@ -187,6 +188,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
   const [auditTo, setAuditTo] = useState<string>('');
   const [appliedAuditFilters, setAppliedAuditFilters] = useState<{ eventType: string; from: string; to: string }>({ eventType: 'ALL', from: '', to: '' });
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
+  const auditListTopRef = React.useRef<HTMLDivElement | null>(null);
 
   const AUDIT_PAGE_SIZE = 30;
 
@@ -277,7 +279,7 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
     });
   };
 
-  const changeAuditPage = (nextOffset: number) => {
+  const changeAuditPage = (nextOffset: number, shouldScrollTop = false) => {
     if (!selectedClientForAudit || nextOffset < 0) return;
     fetchClientAudit(selectedClientForAudit, {
       eventType: appliedAuditFilters.eventType,
@@ -285,6 +287,9 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
       to: appliedAuditFilters.to,
       offset: nextOffset,
     });
+    if (shouldScrollTop && auditListTopRef.current) {
+      auditListTopRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // Formato relativo de tiempo en español
@@ -2203,8 +2208,28 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
               </button>
             </div>
 
+            <TablePaginationBar
+              position="top"
+              padding="10px 22px"
+              backgroundColor="#f8fafc"
+              currentPage={Math.floor(auditOffset / AUDIT_PAGE_SIZE) + 1}
+              totalPages={Math.max(1, Math.ceil(auditTotal / AUDIT_PAGE_SIZE))}
+              disabled={isLoadingAudit}
+              onPageChange={(nextPage) => changeAuditPage((nextPage - 1) * AUDIT_PAGE_SIZE, false)}
+              summary={
+                auditTotal > 0 ? (
+                  <>
+                    Mostrando <strong style={{ color: '#0f172a' }}>{auditOffset + 1}–{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditTotal)}</strong> de{' '}
+                    <strong style={{ color: '#0f172a' }}>{auditTotal.toLocaleString()}</strong> eventos
+                  </>
+                ) : (
+                  'Sin eventos'
+                )
+              }
+            />
+
             {/* Modal Body / Timeline */}
-            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div ref={auditListTopRef} style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {isLoadingAudit ? (
                 <AuditTimelineSkeleton rows={5} />
               ) : auditEvents.length > 0 ? (
@@ -2315,54 +2340,25 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: '12px 22px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', backgroundColor: '#f8fafc', flexWrap: 'wrap' }}>
-              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                {auditTotal > 0 ? (
+            <TablePaginationBar
+              position="bottom"
+              padding="12px 22px"
+              backgroundColor="#f8fafc"
+              currentPage={Math.floor(auditOffset / AUDIT_PAGE_SIZE) + 1}
+              totalPages={Math.max(1, Math.ceil(auditTotal / AUDIT_PAGE_SIZE))}
+              disabled={isLoadingAudit}
+              onPageChange={(nextPage) => changeAuditPage((nextPage - 1) * AUDIT_PAGE_SIZE, true)}
+              summary={
+                auditTotal > 0 ? (
                   <>
-                    Mostrando <strong>{auditOffset + 1}–{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditTotal)}</strong> de <strong>{auditTotal}</strong> eventos
+                    Mostrando <strong style={{ color: '#0f172a' }}>{auditOffset + 1}–{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditTotal)}</strong> de{' '}
+                    <strong style={{ color: '#0f172a' }}>{auditTotal.toLocaleString()}</strong> eventos
                   </>
                 ) : (
                   'Sin eventos'
-                )}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => changeAuditPage(Math.max(auditOffset - AUDIT_PAGE_SIZE, 0))}
-                  disabled={isLoadingAudit || auditOffset === 0}
-                  style={{
-                    padding: '6px 12px',
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: isLoadingAudit || auditOffset === 0 ? '#94a3b8' : '#334155',
-                    cursor: isLoadingAudit || auditOffset === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  Anterior
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => changeAuditPage(auditOffset + AUDIT_PAGE_SIZE)}
-                  disabled={isLoadingAudit || auditOffset + AUDIT_PAGE_SIZE >= auditTotal}
-                  style={{
-                    padding: '6px 12px',
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: isLoadingAudit || auditOffset + AUDIT_PAGE_SIZE >= auditTotal ? '#94a3b8' : '#334155',
-                    cursor: isLoadingAudit || auditOffset + AUDIT_PAGE_SIZE >= auditTotal ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  Siguiente
-                </button>
-
+                )
+              }
+              trailingSlot={
                 <button
                   type="button"
                   onClick={() => setSelectedClientForAudit(null)}
@@ -2379,8 +2375,8 @@ export default function AnalyticsDashboard({ adminEmail, onBackToWarehouse }: An
                 >
                   Cerrar
                 </button>
-              </div>
-            </div>
+              }
+            />
           </div>
         </div>
       )}

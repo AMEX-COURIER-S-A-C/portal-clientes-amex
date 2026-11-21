@@ -20,6 +20,7 @@ import ExcelExportDropdown from '@/components/ExcelExportDropdown';
 import { trackPortalEvent } from '@/lib/analytics/tracker';
 import { scrollElementToStart } from '@/lib/portal/scroll';
 import { WarehouseTableSkeletonRows } from '@/components/ui/PortalSkeletons';
+import TablePaginationBar from '@/components/ui/TablePaginationBar';
 import {
   ESTADOS_DISPONIBLES,
   formatDateTimeTIB,
@@ -147,10 +148,12 @@ export default function WarehouseView({
 }: WarehouseViewProps) {
   const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
 
-  const goToPage = (nextPage: number) => {
+  const goToPage = (nextPage: number, shouldScroll = false) => {
     if (nextPage === currentPage) return;
     setCurrentPage(nextPage);
-    scrollElementToStart(tableContainerRef.current);
+    if (shouldScroll) {
+      scrollElementToStart(tableContainerRef.current);
+    }
   };
 
   return (
@@ -1152,6 +1155,21 @@ export default function WarehouseView({
         ref={tableContainerRef}
         style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden', scrollMarginTop: '72px' }}
       >
+        <TablePaginationBar
+          position="top"
+          currentPage={currentPage}
+          totalPages={totalPages}
+          paginationPages={paginationPages}
+          onPageChange={(nextPage) => goToPage(nextPage, false)}
+          summary={
+            <>
+              Pág. <strong style={{ color: '#111827' }}>{currentPage}</strong> de{' '}
+              <strong style={{ color: '#111827' }}>{totalPages.toLocaleString()}</strong> (
+              {totalFilteredCount.toLocaleString()} registros)
+            </>
+          }
+        />
+
         <div className="flex md:hidden items-center justify-between px-4 py-2.5 bg-[#f8fafc] border-b border-gray-200 text-xs">
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: '#374151' }}>
             <ArrowRightLeft style={{ width: '13px', height: '13px', color: '#ff5722' }} />
@@ -1307,101 +1325,20 @@ export default function WarehouseView({
           </table>
         </div>
 
-        {/* Paginación estilo TIB */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8f9fa', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontSize: '12px', color: '#6b7280' }}>
-            Pág. <strong style={{ color: '#111827' }}>{currentPage}</strong> de <strong style={{ color: '#111827' }}>{totalPages.toLocaleString()}</strong> ({totalFilteredCount.toLocaleString()} registros)
-          </span>
-
-          {totalPages > 1 && (
+        <TablePaginationBar
+          position="bottom"
+          currentPage={currentPage}
+          totalPages={totalPages}
+          paginationPages={paginationPages}
+          onPageChange={(nextPage) => goToPage(nextPage, true)}
+          summary={
             <>
-              <div className="flex sm:hidden items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => goToPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                  style={{ minHeight: '40px', padding: '6px 14px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12.5px', fontWeight: 600 }}
-                >
-                  Anterior
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                  style={{ minHeight: '40px', padding: '6px 14px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12.5px', fontWeight: 600 }}
-                >
-                  Siguiente
-                </button>
-              </div>
-
-              <div className="hidden sm:flex items-center gap-1">
-                {currentPage > 3 && (
-                  <button
-                    type="button"
-                    onClick={() => goToPage(1)}
-                    style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
-                    title="Primera página"
-                  >
-                    « 1
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => goToPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                  style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
-                >
-                  Anterior
-                </button>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                  {paginationPages.map((page) => (
-                    <button
-                      key={page}
-                      type="button"
-                      onClick={() => goToPage(page)}
-                      style={{
-                        minWidth: '32px',
-                        height: '32px',
-                        padding: '0 6px',
-                        borderRadius: '4px',
-                        border: currentPage === page ? 'none' : '1px solid #d1d5db',
-                        backgroundColor: currentPage === page ? '#ff5722' : '#ffffff',
-                        color: currentPage === page ? '#ffffff' : '#374151',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                  style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
-                >
-                  Siguiente
-                </button>
-
-                {currentPage < totalPages - 2 && (
-                  <button
-                    type="button"
-                    onClick={() => goToPage(totalPages)}
-                    style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
-                    title="Última página"
-                  >
-                    {totalPages.toLocaleString()} »
-                  </button>
-                )}
-              </div>
+              Pág. <strong style={{ color: '#111827' }}>{currentPage}</strong> de{' '}
+              <strong style={{ color: '#111827' }}>{totalPages.toLocaleString()}</strong> (
+              {totalFilteredCount.toLocaleString()} registros)
             </>
-          )}
-        </div>
+          }
+        />
       </div>
     </>
   );

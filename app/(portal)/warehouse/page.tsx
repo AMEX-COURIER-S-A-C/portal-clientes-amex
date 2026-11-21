@@ -9,6 +9,7 @@ import { usePortalSession } from '@/components/portal/PortalShell';
 import WarehouseView from '@/components/warehouse/WarehouseView';
 import { PaqueteTIB } from '@/lib/portal/types';
 import { getLimaDatePresetRange } from '@/lib/portal/limaTime';
+import { computePaginationPages } from '@/lib/portal/pagination';
 
 const PhotoLightboxModal = dynamic(() => import('@/components/warehouse/PhotoLightboxModal'), {
   ssr: false,
@@ -620,29 +621,10 @@ export default function WarehousePage() {
 
   const totalPages = Math.ceil(totalFilteredCount / itemsPerPage) || 1;
 
-  const paginationPages = useMemo(() => {
-    const maxVisible = 5;
-    if (totalPages <= maxVisible) {
-      return Array.from({ length: totalPages }, (_, i) => i + 1);
-    }
-    const half = Math.floor(maxVisible / 2);
-    let start = currentPage - half;
-    let end = currentPage + half;
-
-    if (start < 1) {
-      start = 1;
-      end = maxVisible;
-    } else if (end > totalPages) {
-      end = totalPages;
-      start = totalPages - maxVisible + 1;
-    }
-
-    const pages: number[] = [];
-    for (let p = start; p <= end; p++) {
-      pages.push(p);
-    }
-    return pages;
-  }, [currentPage, totalPages]);
+  const paginationPages = useMemo(
+    () => computePaginationPages(currentPage, totalPages, 5),
+    [currentPage, totalPages]
+  );
 
   return (
     <>

@@ -25,6 +25,7 @@ import { isSuperadminEmail } from '@/lib/portal/superadmin';
 import { cleanExactString } from '@/lib/portal/keywords';
 import { scrollElementToStart } from '@/lib/portal/scroll';
 import { ConfigTableSkeletonRows } from '@/components/ui/PortalSkeletons';
+import TablePaginationBar from '@/components/ui/TablePaginationBar';
 import InternalStaffPanel from '@/components/admin/InternalStaffPanel';
 import {
   ClientePortalItem,
@@ -109,11 +110,14 @@ export default function AdminConfigView({
   onAssignTibClientToPortal,
 }: AdminConfigViewProps) {
   const tibTableRef = React.useRef<HTMLDivElement | null>(null);
+  const tibTotalPages = Math.max(1, Math.ceil(tibCatalogTotal / 15));
 
-  const goToTibPage = (nextPage: number) => {
+  const goToTibPage = (nextPage: number, shouldScroll = false) => {
     if (nextPage === tibCatalogPage) return;
     setTibCatalogPage(nextPage);
-    scrollElementToStart(tibTableRef.current);
+    if (shouldScroll) {
+      scrollElementToStart(tibTableRef.current);
+    }
   };
 
   return (
@@ -895,8 +899,24 @@ export default function AdminConfigView({
               </span>
             </div>
 
-            <div ref={tibTableRef} style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', scrollMarginTop: '72px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+            <div ref={tibTableRef} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', scrollMarginTop: '72px' }}>
+              <TablePaginationBar
+                position="top"
+                currentPage={tibCatalogPage}
+                totalPages={tibTotalPages}
+                disabled={isLoadingTibCatalog}
+                onPageChange={(nextPage) => goToTibPage(nextPage, false)}
+                summary={
+                  <>
+                    Página <strong style={{ color: '#111827' }}>{tibCatalogPage}</strong> de{' '}
+                    <strong style={{ color: '#111827' }}>{tibTotalPages.toLocaleString()}</strong> (
+                    {tibCatalogTotal.toLocaleString()} consignatarios)
+                  </>
+                }
+              />
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
                     <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario (Nombre en TIB)</th>
@@ -1022,51 +1042,23 @@ export default function AdminConfigView({
                   )}
                 </tbody>
               </table>
-            </div>
-
-            {tibCatalogTotal > 15 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginTop: '12px', fontSize: '12px', color: '#6b7280' }}>
-                <span>
-                  Página <strong>{tibCatalogPage}</strong> de <strong>{Math.ceil(tibCatalogTotal / 15)}</strong> ({tibCatalogTotal.toLocaleString()} clientes)
-                </span>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button
-                    type="button"
-                    disabled={tibCatalogPage <= 1 || isLoadingTibCatalog}
-                    onClick={() => goToTibPage(Math.max(1, tibCatalogPage - 1))}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '5px',
-                      border: '1px solid #d1d5db',
-                      backgroundColor: tibCatalogPage <= 1 ? '#f3f4f6' : '#ffffff',
-                      color: tibCatalogPage <= 1 ? '#9ca3af' : '#374151',
-                      cursor: tibCatalogPage <= 1 ? 'not-allowed' : 'pointer',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    type="button"
-                    disabled={tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) || isLoadingTibCatalog}
-                    onClick={() => goToTibPage(tibCatalogPage + 1)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '5px',
-                      border: '1px solid #d1d5db',
-                      backgroundColor: tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) ? '#f3f4f6' : '#ffffff',
-                      color: tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) ? '#9ca3af' : '#374151',
-                      cursor: tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) ? 'not-allowed' : 'pointer',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Siguiente
-                  </button>
-                </div>
               </div>
-            )}
+
+              <TablePaginationBar
+                position="bottom"
+                currentPage={tibCatalogPage}
+                totalPages={tibTotalPages}
+                disabled={isLoadingTibCatalog}
+                onPageChange={(nextPage) => goToTibPage(nextPage, true)}
+                summary={
+                  <>
+                    Página <strong style={{ color: '#111827' }}>{tibCatalogPage}</strong> de{' '}
+                    <strong style={{ color: '#111827' }}>{tibTotalPages.toLocaleString()}</strong> (
+                    {tibCatalogTotal.toLocaleString()} consignatarios)
+                  </>
+                }
+              />
+            </div>
           </div>
         )}
       </div>
